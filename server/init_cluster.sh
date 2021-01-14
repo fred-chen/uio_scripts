@@ -11,24 +11,29 @@ FORCE=false
 BOOT_ONLY=false
 CREATE_LUNS=false
 RPMDIR=
+CORE_DEV_SIZE_G=300
 
 usage() {
   [[ -z "$1" ]] || echo "Error: $1"
-  echo "usage: `basename $0` [-f] [-s|--stop]"
-  echo "                     [-r|--replace rpm_dir] [-d|--initbackend]"
-  echo "                     [-b|--bootonly]"
-  echo "                     [-i|--initarray]"
-  echo "                     [-c|--createluns]"
-  echo " -f: force stop"
-  echo " -d: initialize backend"
+  len=$(expr length "usage: `basename $0`")
+  printf "usage: `basename $0` %s\n" "[-f] [-s|--stoponly]"
+  printf "%${len}s %s\n" " " "[-b|--bootonly]"
+  printf "%${len}s %s\n" " " "[-r|--replace rpm_dir]"
+  printf "%${len}s %s\n" " " "[-d|--initbackend] [-G dump_size]"
+  printf "%${len}s %s\n" " " "[-i|--initarray]"
+  printf "%${len}s %s\n" " " "[-c|--createluns]"
+  echo " -f: force (killing cio_array)"
+  echo " -s: stop only"
   echo " -b: start objmgr and objmgr-fab"
+  echo " -d: initialize backend"
+  echo " -G: prereserve size for coredump device"
   echo " -i: initialize array"
   echo " -c: create new luns and mappings"
   exit 1
 }
 
 handleopts() {
-    OPTS=`getopt -o r::dsfhbic -l replace:,initbackend,stoponly,initarray,createluns -- "$@"`
+    OPTS=`getopt -o r::dsfhbicG: -l replace:,initbackend,stoponly,initarray,createluns -- "$@"`
     [[ $? -eq 0 ]] || usage
 
     eval set -- "$OPTS"
@@ -45,6 +50,7 @@ handleopts() {
             -b | --bootonly ) BOOT_ONLY=true; shift 1;;
             -c | --createluns ) CREATE_LUNS=true; shift 1;;
             -f ) FORCE=true; shift 1;;
+            -G ) CORE_DEV_SIZE_G=$2; shift 2;;
             -h ) shift 1 && usage;;
             --) shift; break;;
         esac
@@ -144,7 +150,7 @@ uninit_array() {
 }
 init_backend() {
   echo -n "initializing backend ..."
-  ./init_backend.sh init > /dev/null 2>&1 || { echo "failed init backend." && return 1; }
+  ./init_backend.sh init -G $CORE_DEV_SIZE_G > /dev/null 2>&1 || { echo "failed init backend." && return 1; }
   echo "done"
 }
 init_array() {

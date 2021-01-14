@@ -18,12 +18,17 @@ KEEPFILES=false
 
 function usage() {
   [[ -z "$1" ]] || echo "Error: $1"
-  echo
   echo "usage: `basename $0` [process_name] [-w prefix] [-t time] [-g oncpu|offcpu|wakeup|offwakeup] [-x exclude_stack] [-k]"
-  echo "example:"
-  echo "  `basename $0`     # gather all types of cpu data for 60 seconds and generate flame graphs. prefix 'this'"
+  echo
+  echo "options:"
+  echo "  -k:    keep temp files."
+  echo
+  echo "examples:"
+  echo "  `basename $0`                 # gather all types of cpu data for 60 seconds and generate flame graphs. prefix 'this'"
+  echo
   echo "  `basename $0` cio_array -k    # gather all types of cpu data of process 'cio_array' for 60 seconds"
   echo "                                 # and generate flame graphs. prefix 'this', keep data files."
+  echo
   echo "  `basename $0` -w 82rw -t 30 -g oncpu     # gather oncpu data for 30 seconds "
   echo "                                            # and generate flame graphs. prefix '82rw'"
   exit 1
@@ -64,10 +69,10 @@ function main() {
   [[ -z "${EXCLUDE_STACK}" ]] && { EXCLUDE_STACK='_NOTHINGEXCLUDED_' && EXCL_SUFFIX=""; } || EXCL_SUFFIX="no_${EXCLUDE_STACK}."
 
   COLLECT__CMD=(
-    ["oncpu"]="/usr/share/bcc/tools/profile -F999 -afd ${ARGPID} 30 > ${PREFIX}.oncpu.${PROGNAME}.${TIME}s.stacks" # collect on-cpu data
-    ["offcpu"]="/usr/share/bcc/tools/offcputime ${ARGPID} --stack-storage-size=819200 -df ${TIME} > ${PREFIX}.offcpu.${PROGNAME}.${TIME}s.stacks"  # collect off-cpu stacks
-    ["wakeup"]="/usr/share/bcc/tools/wakeuptime ${ARGPID} --stack-storage-size=819200 -f ${TIME} > ${PREFIX}.wakeup.${PROGNAME}.${TIME}s.stacks" # collect wakeup stacks
-    ["offwakeup"]="/usr/share/bcc/tools/offwaketime ${ARGPID} --stack-storage-size=819200 -f ${TIME} > ${PREFIX}.offwakeup.${PROGNAME}.${TIME}s.stacks" # collect offcpu+wakeup stacks
+    ["oncpu"]="/usr/share/bcc/tools/profile -F999 -afd  --stack-storage-size=2024000 ${ARGPID} ${TIME} > ${PREFIX}.oncpu.${PROGNAME}.${TIME}s.stacks" # collect on-cpu data
+    ["offcpu"]="/usr/share/bcc/tools/offcputime ${ARGPID} --stack-storage-size=2024000 -df ${TIME} > ${PREFIX}.offcpu.${PROGNAME}.${TIME}s.stacks"  # collect off-cpu stacks
+    ["wakeup"]="/usr/share/bcc/tools/wakeuptime ${ARGPID} --stack-storage-size=2024000 -f ${TIME} > ${PREFIX}.wakeup.${PROGNAME}.${TIME}s.stacks" # collect wakeup stacks
+    ["offwakeup"]="/usr/share/bcc/tools/offwaketime ${ARGPID} --stack-storage-size=2024000 -f ${TIME} > ${PREFIX}.offwakeup.${PROGNAME}.${TIME}s.stacks" # collect offcpu+wakeup stacks
   )
   FLAME_GRAPH_CMD=(
     ["oncpu"]="grep -v ${EXCLUDE_STACK} ${PREFIX}.oncpu.${PROGNAME}.${TIME}s.stacks | ../FlameGraph/flamegraph.pl > ${PREFIX}.oncpu.${PROGNAME}.${TIME}s.perf.${EXCL_SUFFIX}svg" # on-cpu flame graph
@@ -84,8 +89,8 @@ function main() {
   for profiling_type in ${TYPE}
   do
     echo -n "collecting ${profiling_type} data for ${TIME} seconds for '${PROGNAME}'... "
-    #echo -n "CMD: ${COLLECT__CMD[${profiling_type}]} "
-    # eval "${COLLECT__CMD[${profiling_type}]}" >/dev/null 2>&1
+    # echo "CMD: ${COLLECT__CMD[${profiling_type}]} "
+    eval "${COLLECT__CMD[${profiling_type}]}" >/dev/null 2>&1
     echo "done"
   done
   [[ -z $EXCLUDE_STACK || $EXCLUDE_STACK = "_NOTHINGEXCLUDED_" ]] && MSGX="" || MSGX="(excluding ${EXCLUDE_STACK})"

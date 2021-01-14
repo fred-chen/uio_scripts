@@ -4,7 +4,19 @@ CORE_MD_PATH="/dev/md/mdcore"
 CORE_MNT="/var/coredumps"
 CORE_SIZE_G=300  # size in GiB reserved for core dump
 
-function usage { echo "$(basename $0) [clear|init]" && exit 1; }
+function usage { echo "$(basename $0) [clear|init] [-G dumpdev_size]" && exit 1; }
+handleopts() {
+    OPTS=`getopt -o G:  -- "$@"`
+    [[ $? -eq 0 ]] || usage
+
+    eval set -- "$OPTS"
+    while true ; do
+        case "$1" in
+            -G) CORE_SIZE_G=$2; shift 2;;
+            --) shift; break;;
+        esac
+    done
+}
 
 function clear() {
   fuser -k ${CORE_MNT}
