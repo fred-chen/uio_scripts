@@ -2,6 +2,7 @@
 # aggregate multiple fio log files and plot a chart
 # requirements:
 #   * gnuplot installed
+# Maintainer: Fred Chen
 
 PLOT_INTERVAL=60  # plot PLOT_INTERVAL on x: 60 seconds
 TYPE="iops"

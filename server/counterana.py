@@ -32,7 +32,7 @@ g_keepfile = False
 def usage(errmsg=""):
     if(errmsg != ""):
         sys.stderr.write("\nERROR: %s\n" % errmsg)
-    print("\nusage:%s [logname] [-e counter_pattern] [-i] [-g|--graph] [-m|--histogram] [-r|--ramplines] [-k]" % sys.argv[0])
+    print("usage:%s [logname] [-e counter_pattern] [-i] [-g|--graph] [-m|--histogram] [-r|--ramplines] [-k]" % sys.argv[0])
     print(
         "\n" "Analyze UniIO counter log files." "\n" 
         "\n" 
@@ -47,18 +47,22 @@ def usage(errmsg=""):
         "if no 'logname' given in command line, counterana.py reads counter data from stdin\n"
         "\n" 
         "examples:" "\n"
-        "  counterana.py counter.log                # report all counters in 'counter.log' (massive lines will slow down the analysis)" "\n" 
-        "  cat counter.log | counterana.py          # same as above" "\n" 
-        "  counterana.py counter.log -e ss.obs      # only report counters that contains 'ss.obs'" "\n" 
-        "  grep ss.obs counter.log | counterana.py  # same as above" "\n" 
-        "  counterana.py counter.log -e ss.obs -g   # report counters that contains 'ss.obs' and plot a graph for each of the counters" "\n" 
-        "  counterana.py counter.log -e ss.obs -m   # report counters that contains 'ss.obs' and print the histogram for each of the counters" "\n"
+        "  ./counterana.py counter.log                # report all counters in 'counter.log' (massive lines will slow down the analysis)" "\n" 
+        "  cat counter.log | ./counterana.py          # same as above" "\n"
+         "\n" 
+        "  ./counterana.py counter.log -e ss.obs      # only report counters that contain 'ss.obs'" "\n" 
+        "  grep ss.obs counter.log | ./counterana.py  # same as above" "\n"
+         "\n"
+        "  ./counterana.py counter.log -e ss.obs -g   # report counters that contains 'ss.obs' and plot a graph for each of the counters" "\n" 
+        "  ./counterana.py counter.log -e ss.obs -m   # report counters that contains 'ss.obs' and print the histogram for each of the counters" "\n"
         "\n"
-        "output format: each line summarize a unique counter" "\n"
-        "output line format:" "\n"
-        "counter_name[sample_count][unit][trends]: min, max, mean, mean_squared_deviation, standard_deviation, pct_stddev:mean, slop" "\n"
+        "output format:" "\n"
+        "  counter_name[sample_count][unit][trends]: min, max, mean, mean_squared_deviation, standard_deviation, pct_stddev:mean, slop" "\n"
+        "  * each line summarizes a unique counter * " "\n"
+         "\n"
+        "how to intepret:" "\n"
         "  sample_count:   how many samples(lines) have been aggregated for a counter" "\n"
-        "  unit:           the unit of a counter" "\n"
+        "  unit:           the unit of a counter (counts, uSec, KiB)" "\n"
         "  trends:         trends of the sample value from the first sample to the last in UP|DOWN|FLAT|NOCHANGE" "\n"
         "  slop:           result of linear regression(the 'a' in y=ax+b). how fast the sample value increase|decreases" "\n"
         "  self explained: min, max, mean, mean_squared_deviation, standard_deviation, pct_stddev:mean" "\n"

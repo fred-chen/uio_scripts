@@ -1,4 +1,11 @@
 #!/usr/bin/bash
+# UniIO node manipulation script
+# Functions:
+#   start, stop uniio ode
+#   reinstall rpms
+#   init DP backend ( calling init_backend.sh in the same directory )
+#   push topology and create luns
+# Maintainer: Fred Chen
 
 REPLACE=false       # default rpm packages
 INIT_BACKEND=false  # no init backend by default

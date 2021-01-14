@@ -1,4 +1,6 @@
 #!/usr/bin/bash
+# wipe all data disks, init DP backend and reserve space for coredumps
+# Maintainer: Fred Chen
 
 CORE_MD_PATH="/dev/md/mdcore"
 CORE_MNT="/var/coredumps"

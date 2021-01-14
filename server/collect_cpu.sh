@@ -5,6 +5,7 @@
 #   eBPF enabled with kernel
 #   bcc installed
 #   FlameGraph installed and located in ../FlameGraph
+# Maintainer: Fred Chen
 
 source scl_source enable devtoolset-7 llvm-toolset-7
 
@@ -26,8 +27,8 @@ function usage() {
   echo "examples:"
   echo "  `basename $0`                 # gather all types of cpu data for 60 seconds and generate flame graphs. prefix 'this'"
   echo
-  echo "  `basename $0` cio_array -k    # gather all types of cpu data of process 'cio_array' for 60 seconds"
-  echo "                                 # and generate flame graphs. prefix 'this', keep data files."
+  echo "  `basename $0` cio_array       # gather all types of cpu data of process 'cio_array' for 60 seconds"
+  echo "                                 # and generate flame graphs. prefix 'this'."
   echo
   echo "  `basename $0` -w 82rw -t 30 -g oncpu     # gather oncpu data for 30 seconds "
   echo "                                            # and generate flame graphs. prefix '82rw'"
