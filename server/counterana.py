@@ -86,6 +86,10 @@ def getint(cmd):
 def printsepline(file):
     file.write( "%s\n" % ("=" * 80) )
     file.flush()
+def E(msg):
+    sys.stderr.write("Error: {0}\n".format(msg))
+    sys.stderr.flush()
+    exit(1)
 
 def log_names():
     return ' '.join(g_log_list)
@@ -98,7 +102,7 @@ def counter_count():
     return int("".join(out))
 
 def handleopts():
-    global g_counter_pattern, g_log_list, g_plot, g_ramplines, g_histogram
+    global g_counter_pattern, g_log_list, g_plot, g_ramplines, g_histogram, g_keepfile
     try:
         options, args = getopt.gnu_getopt(sys.argv[1:], "he:gr:m", "help,graph,ramplines:histogram")
     except getopt.GetoptError as err:
@@ -137,7 +141,7 @@ def build_data():
     #   size in GiB: e.g. ss.dp.compressed_bytes: 794.00GiB
     #   size in TiB: e.g. ss.dp.uncompressed_bytes: 1.00TiB
     #   size in Byte: e.g. ss.dp.localcache_bytes: 0.00B 
-    global data, g_ignore_case, aggregated_array
+    global data, g_ignore_case, aggregated_array, g_keepfile
 
     file_names = " ".join(g_log_list)
     if(not file_names.strip()):
@@ -218,6 +222,8 @@ def build_data():
             aggregated_array[counter_name][0].append(value)
         else:
             aggregated_array[counter_name] = ([value], unit)
+    if (not g_keepfile):
+        runcmd("rm -f %s" % ("counters_tmp.txt"))
     sys.stderr.write("\rbuilding aggregated array ... done.%s\n" % (' ' * 40))
 
 def average(val_list):
@@ -262,13 +268,14 @@ def deviate():
             x += 1
         slop = sigmaXY / sigmaXX
         # print("xmean=%.4f sigmaXY=%.4f sigmaXX=%.4f slop=%.4f" % (xmean, sigmaXY, sigmaXX, slop))
-        if (slop > 1): trend = "UP"
-        elif (slop == 0): trend = "NOCHANGE"
-        elif (slop < -1): trend = "DOWN"
-        else: trend = "FLAT"
         mean_squared_deviation = sse / len(values)
         standard_deviation = math.sqrt(mean_squared_deviation)
         pct_stddev = standard_deviation * 100.0 / mean if mean !=0 else 0
+        if (slop == 0): trend = "NOCHANGE"
+        elif (slop > 0.05 and pct_stddev<100): trend = "UP"
+        elif (slop < 0.05 and pct_stddev<=100): trend = "DOWN"
+        elif (pct_stddev > 50): trend = "SPIKES"
+        else: trend = "FLAT"
         d[counter_name] = {}
         d[counter_name]["min"] = min
         d[counter_name]["max"] = max
@@ -278,7 +285,7 @@ def deviate():
         d[counter_name]["pct_stddev"] = pct_stddev
         d[counter_name]["trend"] = trend
         
-        print("%s[%d][%s][%s]: min=%.1f max=%.1f mean=%.1f stddev=%.1f stddev:mean=%.1f%% slop=%.1f" % 
+        print("%s[%d][%s][%s]: min=%.1f max=%.1f mean=%.1f stddev=%.1f stddev:mean=%.1f%% slop=%.3f" % 
             (counter_name, len(values), unit, trend, min, max, mean, standard_deviation, pct_stddev, slop))
     return d
 
@@ -310,7 +317,7 @@ def plot_counter():
         if (rt != 0):
             print("out=%s\nerr=%s\nrt=%d" % ("".join(out), "".join(err), rt))
         if (not g_keepfile):
-            runcmd("rm -f plotdatafilename")
+            runcmd("rm -f %s" % (plotdatafilename))
         subprocess.call("ls %s" % (plotfilename), shell=True)
 
 def hist():
@@ -318,6 +325,7 @@ def hist():
         print a histogram of values
         bucket_num: how many buckets
     """
+    printsepline(sys.stderr)
     global aggregated_array
     for counter_name in aggregated_array.keys():
         values = aggregated_array[counter_name][0]; values = values[g_ramplines:len(values)-g_ramplines]
@@ -327,8 +335,12 @@ def hist():
         for v in values:
             if v < min: min = v
             if v > max: max = v
-        span = max - min
-        bucket_num = int(math.log(span, 2)) + 2
+        span = max - min if max - min > 0 else 1
+        try:
+            bucket_num = int(math.log(span, 2)) + 2
+        except ValueError as err:
+            E("%s\nmin=%d max=%d span=%d" % (err,min,max,span))
+            
         buckets = [ 0 for i in range(bucket_num) ]
         for v in values:
             for i in range(bucket_num):
