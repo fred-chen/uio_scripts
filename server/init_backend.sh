@@ -5,19 +5,22 @@
 CORE_MD_PATH="/dev/md/mdcore"
 CORE_MNT="/var/coredumps"
 CORE_SIZE_G=300  # size in GiB reserved for core dump
+OP=
 
-function usage { echo "$(basename $0) [clear|init] [-G dumpdev_size]" && exit 1; }
+function usage { echo "usage: $(basename $0) [ clear|init ] [ -G dumpdev_size ]" && exit 1; }
 handleopts() {
-    OPTS=`getopt -o G:  -- "$@"`
+    OPTS=`getopt -o G:h  -- "$@"`
     [[ $? -eq 0 ]] || usage
 
     eval set -- "$OPTS"
     while true ; do
         case "$1" in
+            -h) shift 1; usage;;
             -G) CORE_SIZE_G=$2; shift 2;;
             --) shift; break;;
         esac
     done
+    [[ $# -ne 0 ]] && OP=$@ || OP=""
 }
 
 function clear() {
@@ -96,10 +99,10 @@ function init() {
 }
 
 function main() {
+  handleopts $@
   # get / filesystem device
   ROOTDEV=`mount | grep -w / | awk '{print $1}' | sed 's/[0-9]//g'`
   DEVS=`lsblk -lpn -o NAME | grep -w 'sd.' | grep -v $ROOTDEV`
-  OP=$1
 
   declare -A devices
   for d in $DEVS # build a device name->wwn assoc-array
@@ -108,10 +111,10 @@ function main() {
     devices["$n"]="$w"
   done
   echo "backend devices: ${!devices[@]}"
-
+  exit 1
   [[ ! -z "$OP" ]] && [[ ! "$OP" =~ clear|init ]] && usage
   [[ "$OP" == "clear" ]] && clear
-  [[ "$OP" == "init" || -z "$OP" ]] && { clear && init; }
+  [[ "$OP" == "init"  ]] && { clear && init; }
 }
 
 main $@

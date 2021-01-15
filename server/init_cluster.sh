@@ -28,7 +28,7 @@ usage() {
   printf "%${len}s %s\n" " " "[-r|--replace rpm_dir]"
   printf "%${len}s %s\n" " " "[-d|--initbackend] [-G dump_size]"
   printf "%${len}s %s\n" " " "[-i|--initarray]"
-  printf "%${len}s %s\n" " " "[-c|--createluns]"
+  printf "%${len}s %s\n" " " "[-c|--createluns --management_ip ip --iscsi_ip ip --topology ip,ip...]"
   echo " -f: force (killing cio_array)"
   echo " -s: stop only"
   echo " -b: start objmgr and objmgr-fab"
@@ -36,11 +36,14 @@ usage() {
   echo " -G: prereserve size for coredump device"
   echo " -i: initialize array"
   echo " -c: create new luns and mappings"
+  echo " --management_ip: specify the management IP address for the federation"
+  echo " --iscsi_ip:      specify the management IP address for the federation"
+  echo " --topology:      specify the node IP addresses for the federation"
   exit 1
 }
 
 handleopts() {
-    OPTS=`getopt -o r::dsfhbicG: -l replace:,initbackend,stoponly,initarray,createluns -- "$@"`
+    OPTS=`getopt -o r::dsfhbicG: -l replace:,initbackend,stoponly,initarray,createluns,management_ip:,iscsi_ip:,topology: -- "$@"`
     [[ $? -eq 0 ]] || usage
 
     eval set -- "$OPTS"
@@ -56,6 +59,9 @@ handleopts() {
             -s | --stoponly ) STOP_ONLY=true; shift 1;;
             -b | --bootonly ) BOOT_ONLY=true; shift 1;;
             -c | --createluns ) CREATE_LUNS=true; shift 1;;
+            --management_ip ) MANAGEMENT_IP=$2; shift 2;;
+            --iscsi_ip ) ISCSI_IP=$2; shift 2;;
+            --topology ) TOPOLOGY=$2; shift 2;;
             -f ) FORCE=true; shift 1;;
             -G ) CORE_DEV_SIZE_G=$2; shift 2;;
             -h ) shift 1 && usage;;
