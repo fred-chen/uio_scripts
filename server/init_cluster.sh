@@ -116,7 +116,7 @@ create_luns() {
 }
 stop_array() {
   detach_luns >/dev/null 2>&1 || true
-  [[ ${FORCE} == true ]] && { echo -n "force stopping array... "; kill `pidof cio_array`; } || echo -n "stopping array... "
+  [[ ${FORCE} == true ]] && { echo -n "force stopping array... "; [[ ! -z "`pidof cio_array`" ]] && kill `pidof cio_array`; } || echo -n "stopping array... "
   systemctl stop objmgr  > /dev/null 2>&1 || { echo "failed 'systemctl stop objmgr'."; return 1; }
   systemctl stop objmgr-fab  > /dev/null 2>&1 || { echo "failed 'systemctl stop objmgr-fab'."; return 1; }
   rmmod objblk > /dev/null 2>&1 || true
@@ -163,7 +163,8 @@ uninit_array() {
 }
 init_backend() {
   echo -n "initializing backend ..."
-  ./init_backend.sh init -G $CORE_DEV_SIZE_G > /dev/null 2>&1 || { echo "failed init backend." && return 1; }
+  SCRIPT_PATH=$(dirname $0)
+  ${SCRIPT_PATH}/init_backend.sh init -G $CORE_DEV_SIZE_G > /dev/null 2>&1 || { echo "failed init backend." && return 1; }
   echo "done"
 }
 init_array() {

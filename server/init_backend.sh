@@ -111,7 +111,6 @@ function main() {
     devices["$n"]="$w"
   done
   echo "backend devices: ${!devices[@]}"
-  exit 1
   [[ ! -z "$OP" ]] && [[ ! "$OP" =~ clear|init ]] && usage
   [[ "$OP" == "clear" ]] && clear
   [[ "$OP" == "init"  ]] && { clear && init; }
