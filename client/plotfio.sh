@@ -5,7 +5,7 @@
 # Maintainer: Fred Chen
 
 PLOT_INTERVAL=60  # plot PLOT_INTERVAL on x: 60 seconds
-TYPE="iops"
+TYPE=
 COUNTER_PATTERN=
 TITLE=
 FN=
@@ -44,6 +44,18 @@ while true ; do
 done
 [[ $# -ne 0 ]] && LOG_LIST="$@" || usage "must specify a logname(s)."
 for n in $LOG_LIST; do [[ ! -e $n ]] && { echo "'$n' doesn't exist."; exit 1; } ; done
+if [[ -z "$TYPE" ]]; then
+  for n in $LOG_LIST
+  do 
+    [[ $n =~ "_iops" ]] && TYPE="iops" && break
+    [[ $n =~ "_lat" ]] && TYPE="lat" && break
+    [[ $n =~ "_clat" ]] && TYPE="clat" && break
+    [[ $n =~ "_slat" ]] && TYPE="slat" && break
+  done
+  [[ -z "$TYPE" ]] && TYPE="iops"
+  echo "warning: type not given(-t), using default: '$TYPE'"
+fi
+
 [[ -z "$TITLE" ]] && TITLE="$TYPE chart"
 FN=`echo $TITLE | sed 's/ /_/g'`
 
