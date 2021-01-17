@@ -61,7 +61,7 @@ def usage(errmsg=""):
         "  counterana.py counter.log -e ss.obs -g   # report counters that contains 'ss.obs' and plot a graph for each of the counters" "\n" 
         "  counterana.py counter.log -e ss.obs -m   # report counters that contains 'ss.obs' and print the histogram for each of the counters" "\n"
          "\n"
-        "  counterana.py counter.log --startline=60 --stopline=120   # report all conter data betwen 60min ~ 120min (if sample interval is 60s) " "\n" 
+        "  counterana.py counter.log --startline=60 --endline=120   # report all conter data betwen 60min ~ 120min (if sample interval is 60s) " "\n" 
         "\n"
         "output format:" "\n"
         "  counter_name[sample_count][unit][trends]: min, max, mean, mean_squared_deviation, standard_deviation, pct_stddev:mean, slop" "\n"
