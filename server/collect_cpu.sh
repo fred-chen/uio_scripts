@@ -62,7 +62,8 @@ function handleopts {
 
 function main() {
   handleopts "$@"
-
+  SCRIPT_PATH=$(dirname $0)
+  
   ARGPID=
   EXCL_SUFFIX=
   declare -A COLLECT__CMD FLAME_GRAPH_CMD
@@ -76,10 +77,10 @@ function main() {
     ["offwakeup"]="/usr/share/bcc/tools/offwaketime ${ARGPID} --stack-storage-size=2024000 -f ${TIME} > ${PREFIX}.offwakeup.${PROGNAME}.${TIME}s.stacks" # collect offcpu+wakeup stacks
   )
   FLAME_GRAPH_CMD=(
-    ["oncpu"]="grep -v ${EXCLUDE_STACK} ${PREFIX}.oncpu.${PROGNAME}.${TIME}s.stacks | ../FlameGraph/flamegraph.pl > ${PREFIX}.oncpu.${PROGNAME}.${TIME}s.perf.${EXCL_SUFFIX}svg" # on-cpu flame graph
-    ["offcpu"]="grep -v ${EXCLUDE_STACK} ${PREFIX}.offcpu.${PROGNAME}.${TIME}s.stacks | ../FlameGraph/flamegraph.pl --color=io --title='Off-CPU Time Flame Graph' --countname=us > ${PREFIX}.offcpu.${PROGNAME}.${TIME}s.${EXCL_SUFFIX}svg" # off-cpu flame graph
-    ["wakeup"]="grep -v ${EXCLUDE_STACK} ${PREFIX}.wakeup.${PROGNAME}.${TIME}s.stacks | ../FlameGraph/flamegraph.pl --color=wakeup --title='Wakeup Time Flame Graph' --countname=us > ${PREFIX}.wakeup.${PROGNAME}.${TIME}s.${EXCL_SUFFIX}svg" # wakeup flame graph
-    ["offwakeup"]="grep -v ${EXCLUDE_STACK} ${PREFIX}.offwakeup.${PROGNAME}.${TIME}s.stacks | ../FlameGraph/flamegraph.pl --color=chain --title='Off-Wakeup Time Flame Graph' --countname=us > ${PREFIX}.offwakeup.${PROGNAME}.${TIME}s.${EXCL_SUFFIX}svg"  # off-wakeup flame graph
+    ["oncpu"]="grep -v ${EXCLUDE_STACK} ${PREFIX}.oncpu.${PROGNAME}.${TIME}s.stacks | ${SCRIPT_PATH}/../FlameGraph/flamegraph.pl > ${PREFIX}.oncpu.${PROGNAME}.${TIME}s.perf.${EXCL_SUFFIX}svg" # on-cpu flame graph
+    ["offcpu"]="grep -v ${EXCLUDE_STACK} ${PREFIX}.offcpu.${PROGNAME}.${TIME}s.stacks | ${SCRIPT_PATH}/../FlameGraph/flamegraph.pl --color=io --title='Off-CPU Time Flame Graph' --countname=us > ${PREFIX}.offcpu.${PROGNAME}.${TIME}s.${EXCL_SUFFIX}svg" # off-cpu flame graph
+    ["wakeup"]="grep -v ${EXCLUDE_STACK} ${PREFIX}.wakeup.${PROGNAME}.${TIME}s.stacks | ${SCRIPT_PATH}/../FlameGraph/flamegraph.pl --color=wakeup --title='Wakeup Time Flame Graph' --countname=us > ${PREFIX}.wakeup.${PROGNAME}.${TIME}s.${EXCL_SUFFIX}svg" # wakeup flame graph
+    ["offwakeup"]="grep -v ${EXCLUDE_STACK} ${PREFIX}.offwakeup.${PROGNAME}.${TIME}s.stacks | ${SCRIPT_PATH}/../FlameGraph/flamegraph.pl --color=chain --title='Off-Wakeup Time Flame Graph' --countname=us > ${PREFIX}.offwakeup.${PROGNAME}.${TIME}s.${EXCL_SUFFIX}svg"  # off-wakeup flame graph
   )
 
   WCOUNT=`echo ${TYPE} | grep -w wakeup | wc -l`
