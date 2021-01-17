@@ -1,10 +1,10 @@
 #!/usr/bin/bash
 # a script to gather oncpu and offcpu data, then generate flame graphs
 # pre-requisites:
-#   kernel version >4.8
-#   eBPF enabled with kernel
-#   bcc installed
-#   FlameGraph installed and located in ../FlameGraph
+#   - kernel version >4.8
+#   - eBPF enabled with kernel
+#   - bcc installed
+#   - FlameGraph installed and located in ../FlameGraph
 # Maintainer: Fred Chen
 
 source scl_source enable devtoolset-7 llvm-toolset-7

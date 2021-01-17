@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # fio wrapper
 # requirements:
-#   fio installed
+#   - fio installed
 # Maintainer: Fred Chen
 
 clients="192.168.100.155,192.168.100.156,192.168.100.169" # fio clients running "fio --server --daemonize"

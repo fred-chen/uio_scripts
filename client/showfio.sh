@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # show fio JSON format output
 # requirements:
-#   jq installed
+#   - jq installed
 # Maintainer: Fred Chen
 
 
