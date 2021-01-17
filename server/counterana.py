@@ -10,8 +10,9 @@
         5. print histogram
         6. print min, max, mean, and standard deviation for counters
         7. plotting a graph for counters
-        8. can skip first or last samples
+        8. can skip first or last few samples
         9. can skip samples with given values # will not implement because it's confusing
+        10. can specify a time windows to analyze ("--startline --endline")
     # prerequisites:
         1. gnuplot installed
     # maintainer: Fred Chen
@@ -28,11 +29,13 @@ aggregated_array={} # raw data: { counter_name -> ([value1, value2 ...], unit) }
 g_ignore_case = False
 g_histogram = False
 g_keepfile = False
+g_startline = 0
+g_endline = 0
 
 def usage(errmsg=""):
     if(errmsg != ""):
         sys.stderr.write("\nERROR: %s\n" % errmsg)
-    print("usage:%s [logname] [-e counter_pattern] [-i] [-g|--graph] [-m|--histogram] [-r|--ramplines] [-k]" % sys.argv[0])
+    print("usage:%s [logname] [-e counter_pattern] [-i] [-g|--graph] [-m|--histogram] [-r|--ramplines] [-k] [--startline n] [--endline n]" % sys.argv[0])
     print(
         "\n" "Analyze UniIO counter log files." "\n" 
         "\n" 
@@ -42,6 +45,8 @@ def usage(errmsg=""):
         "  -g, --graph:      plot a scatter graph for counters" "\n"
         "  -m, --histogram:  print histogram (log2 buckets)" "\n"
         "  -r, --ramplines:  ramping lines. to skip first and last few lines of data" "\n"
+        "  --startline:      specify a start line, to only analyze lines after that line" "\n"
+        "  --endline:        specify an end line, to only analyze lines before that line"
         "  -k:               keep temp files" "\n"
          "\n"
         "if no 'logname' given in command line, counterana.py reads counter data from stdin\n"
@@ -55,6 +60,8 @@ def usage(errmsg=""):
          "\n"
         "  counterana.py counter.log -e ss.obs -g   # report counters that contains 'ss.obs' and plot a graph for each of the counters" "\n" 
         "  counterana.py counter.log -e ss.obs -m   # report counters that contains 'ss.obs' and print the histogram for each of the counters" "\n"
+         "\n"
+        "  counterana.py counter.log --startline=60 --stopline=120   # report all conter data betwen 60min ~ 120min (if sample interval is 60s) " "\n" 
         "\n"
         "output format:" "\n"
         "  counter_name[sample_count][unit][trends]: min, max, mean, mean_squared_deviation, standard_deviation, pct_stddev:mean, slop" "\n"
@@ -102,9 +109,9 @@ def counter_count():
     return int("".join(out))
 
 def handleopts():
-    global g_counter_pattern, g_log_list, g_plot, g_ramplines, g_histogram, g_keepfile
+    global g_counter_pattern, g_log_list, g_plot, g_ramplines, g_histogram, g_keepfile, g_startline, g_endline
     try:
-        options, args = getopt.gnu_getopt(sys.argv[1:], "he:gr:m", "help,graph,ramplines:histogram")
+        options, args = getopt.gnu_getopt(sys.argv[1:], "he:gr:m", ["help","graph","ramplines=","histogram","startline=","endline="])
     except getopt.GetoptError as err:
         usage(err)
     for o, a in options:
@@ -122,6 +129,11 @@ def handleopts():
             g_keepfile = True
         if(o in ('-m', '--histogram')):
             g_histogram = True
+        if(o == '--startline'):
+            g_startline = int(a)
+        if(o == '--endline'):
+            g_endline = int(a)
+
     g_log_list = args
 
 def build_data():
@@ -235,12 +247,14 @@ def deviate():
         output format: counter_name[samplen_count][unit]["UP|DOWN|FLAT|NOCHANGE"]: min, max, mean, mean_squared_deviation, standard_deviation, pct_stddev:mean
         return a dict: d{ counter_name={ "min"=min, "max"=max ... } }
     """
-    global data, g_ramplines, aggregated_array
+    global data, g_ramplines, aggregated_array, g_startline, g_endline
     
     printsepline(sys.stderr)
     d = {}
     for counter_name in aggregated_array.keys():
-        values = aggregated_array[counter_name][0]; values = values[g_ramplines:len(values)-g_ramplines]
+        values = aggregated_array[counter_name][0]; 
+        endline = g_endline-g_ramplines if g_endline else len(values)-g_ramplines
+        values = values[g_startline+g_ramplines:endline]
         unit = aggregated_array[counter_name][1]
         min = 9999999999999999999999999.0
         max = -999999999999999999999999.0
@@ -272,8 +286,8 @@ def deviate():
         standard_deviation = math.sqrt(mean_squared_deviation)
         pct_stddev = standard_deviation * 100.0 / mean if mean !=0 else 0
         if (slop == 0): trend = "NOCHANGE"
-        elif (slop > 0.05 and pct_stddev<100): trend = "UP"
-        elif (slop < 0.05 and pct_stddev<=100): trend = "DOWN"
+        elif (slop > 0.005 and pct_stddev<=100): trend = "UP"
+        elif (slop < -0.005 and pct_stddev<=100): trend = "DOWN"
         elif (pct_stddev > 50): trend = "SPIKES"
         else: trend = "FLAT"
         d[counter_name] = {}
@@ -290,12 +304,14 @@ def deviate():
     return d
 
 def plot_counter():
-    global aggregated_array, g_keepfile
+    global aggregated_array, g_keepfile, g_startline, g_endline
 
     printsepline(sys.stderr)
     for counter_name in aggregated_array.keys():
         unit = aggregated_array[counter_name][1]
-        values = aggregated_array[counter_name][0]; values = values[g_ramplines:len(values)-g_ramplines]
+        values = aggregated_array[counter_name][0]; 
+        endline = g_endline-g_ramplines if g_endline else len(values)-g_ramplines
+        values = values[g_startline+g_ramplines:endline]
         values_sorted = sorted(values, reverse=True)
         values_zipped = zip(range(len(values)),values)
         plotdatafilename = ("%s.plotdata" % (counter_name)).replace('/','_')
@@ -328,16 +344,18 @@ def hist():
     printsepline(sys.stderr)
     global aggregated_array
     for counter_name in aggregated_array.keys():
-        values = aggregated_array[counter_name][0]; values = values[g_ramplines:len(values)-g_ramplines]
+        values = aggregated_array[counter_name][0]; 
+        endline = g_endline-g_ramplines if g_endline else len(values)-g_ramplines
+        values = values[g_startline+g_ramplines:endline]
         unit = aggregated_array[counter_name][1]
         print("\nHistogram for %s (%s) ... %d samples." % (counter_name, unit, len(values)))
         min = max = values[0]
         for v in values:
             if v < min: min = v
             if v > max: max = v
-        span = max - min if max - min > 0 else 1
+        # span = max - min if max - min > 0 else 1
         try:
-            bucket_num = int(math.log(span, 2)) + 2
+            bucket_num = int(math.log(max, 2)) + 2
         except ValueError as err:
             E("%s\nmin=%d max=%d span=%d" % (err,min,max,span))
             
