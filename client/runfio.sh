@@ -67,8 +67,9 @@ main() {
     for nj in $njobs
     do
       client_args=
+      joblogdir=$logdir/$jobtype.qd$qd.njobs$nj.${runtime}s && mkdir -p $joblogdir
       jsonfn=$outputdir/$jobtype.qd$qd.njobs$nj.json
-      logfn=$logdir/$jobtype.qd$qd.njobs$nj
+      logfn=joblogdir/$jobtype.qd$qd.njobs$nj.${runtime}s
       for client in $clients
       do
         jobfn=$profiledir/${jobtype}_$client.fio
