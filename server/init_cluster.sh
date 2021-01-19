@@ -73,6 +73,9 @@ handleopts() {
 is_ciorunning() {
   [[ $(ps -ef|grep fabric-manager.jar|grep -v grep|wc -l) -gt 0 ]] && return 0 || return 1
 }
+is_arrayrunning() {
+  [[ $(pgrep -nx cio_array|wc -l) -gt 0 ]] && return 0 || return 1
+}
 detach_luns() {
   echo -n "detaching luns... "
   is_ciorunning && {
@@ -115,12 +118,14 @@ create_luns() {
   cioctl list
 }
 stop_array() {
-  detach_luns >/dev/null 2>&1 || true
-  [[ ${FORCE} == true ]] && { echo -n "force stopping array... "; [[ ! -z "`pidof cio_array`" ]] && kill `pidof cio_array`; } || echo -n "stopping array... "
-  systemctl stop objmgr  > /dev/null 2>&1 || { echo "failed 'systemctl stop objmgr'."; return 1; }
-  systemctl stop objmgr-fab  > /dev/null 2>&1 || { echo "failed 'systemctl stop objmgr-fab'."; return 1; }
-  rmmod objblk > /dev/null 2>&1 || true
-  echo "done."
+  is_arrayrunning && {
+    detach_luns >/dev/null 2>&1 || true
+    [[ ${FORCE} == true ]] && { echo -n "force stopping array... "; [[ ! -z "`pidof cio_array`" ]] && kill `pidof cio_array`; } || echo -n "stopping array... "
+    systemctl stop objmgr  > /dev/null 2>&1 || { echo "failed 'systemctl stop objmgr'."; return 1; }
+    systemctl stop objmgr-fab  > /dev/null 2>&1 || { echo "failed 'systemctl stop objmgr-fab'."; return 1; }
+    rmmod objblk > /dev/null 2>&1 || true
+    echo "done."
+  }
 }
 
 start_array() {
@@ -139,10 +144,12 @@ start_array() {
   echo "done."
 }
 push_topology() {
-  echo -n "pushing topology ..."
-  cioctl topology $TOPOLOGY > /dev/null 2>&1 || { echo "failed 'cioctl topology $TOPOLOGY'"; return 1; }
-  cioctl portal --management_ip $MANAGEMENT_IP --iscsi_ip $ISCSI_IP || { echo "failed 'cioctl portal --management_ip $MANAGEMENT_IP --iscsi_ip $ISCSI_IP'"; return 1; }
-  echo "done."
+  is_ciorunning && {
+    echo -n "pushing topology ..."
+    cioctl topology $TOPOLOGY > /dev/null 2>&1 || { echo "failed 'cioctl topology $TOPOLOGY'"; return 1; }
+    cioctl portal --management_ip $MANAGEMENT_IP --iscsi_ip $ISCSI_IP || { echo "failed 'cioctl portal --management_ip $MANAGEMENT_IP --iscsi_ip $ISCSI_IP'"; return 1; }
+    echo "done."
+  } || echo "cio isn't running."
 }
 replace_rpm() {
   for n in ${RPMDIR}/*.rpm
