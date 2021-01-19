@@ -11,9 +11,9 @@ profiledir=./fio_jobfile # the directory where fio find its job files
 qds="1"                  # iodepths fio will use in job files. multiple q depth can be specified: '1,2,3'
 njobs="1"                # numjobs fio will use in job files. multiple numjobs can be specified: '1,2,3'
 runtime=600              # the time that fio will run
-devlist="sdb,sdc,sdd,sde,sdf,sdg,sdh,sdi,sdj,sdk,sdl,sdm,sdn,sdo,sdp,sdq,sdr,sds"
 jobtype=                 # job type, a prefix of fio job files
-
+duprate=                 # dedup ratio. (dedupe_percentage=xxx in fio profile)
+comprate=                # compression ratio. (buffer_compress_percentage=xxx in fio profile)
 
 function usage() {
   [[ ! -z $1 ]] && {
@@ -21,12 +21,24 @@ function usage() {
     >&2 echo "ERROR:" $1
     echo
   }
-  echo "usage: `basename $0` <job_type> [-c|--clients client_str] [-j|--jobs job_str] [-q|--qdepth qd_str] [-t|--time secs] [-d|--devices dev_str]"
-  exit 0
+  len=$(expr length "usage: `basename $0`")
+  printf "usage: `basename $0` <job_type> [-j|--jobs job_str] [-q|--qdepth qd_str]\n"
+  printf "%${len}s            [-t|--time secs] [-d|--devices dev_str] [-c|--clients client_str]\n" " "
+  printf "%${len}s            [--duprate pct] [--comprate pct]\n" " "
+  echo
+  echo "options:"
+  echo "job_type:        job type, a prefix of fio job files"
+  echo "  -j | --jobs:   specify numjobs fio will use in job files. multiple numjobs can be specified: '1,2,3'"
+  echo "  -q | --qdepth: specify iodepth fio will use in job files. multiple q depth can be specified: '1,2,3'"
+  echo "  -t | --time:   specify runtime in fio profile"
+  echo "  --duprate:     specify dedupe_percentage in fio profile"
+  echo "  --comprate:    specify buffer_compress_percentage in fio profile"
+
+  exit 1
 }
 
 handleopts() {
-  OPTS=`getopt -o hc:q:t:j:d: -l help,clients:,jobs:,qdepth:,time:,devices: -- "$@"`
+  OPTS=`getopt -o hc:q:t:j:d: -l help,clients:,jobs:,qdepth:,time:,devices:,duprate:,comprate: -- "$@"`
   [[ $? -eq 0 ]] || usage
   eval set -- "$OPTS"
   while true ; do
@@ -37,6 +49,8 @@ handleopts() {
           -t | --time) runtime=$2; shift 2;;
           -d | --devices) devlist=$2; shift 2;;
           -h | --help) shift 1; usage;;
+          --duprate) duprate=$2; shift 2;;
+          --comprate) comprate=$2; shift 2;;
           --) shift; break;;
       esac
   done
@@ -53,7 +67,6 @@ handleopts() {
   echo "njobs=$njobs"
   echo "qds=$qds"
   echo "clients=$clients"
-  echo "devlist=$devlist"
   echo "time=$runtime"
   echo "jobtype=$jobtype"
 }
@@ -74,12 +87,15 @@ main() {
       do
         jobfn=$profiledir/${jobtype}_$client.fio
         [[ ! -e $jobfn ]] && echo "$jobfn doesn't exist." && exit 1 || {
-          sed -i "s/iodepth=[0-9]\+/iodepth=${qd}/g" $jobfn &&
-          sed -i "s/numjobs=[0-9]\+/numjobs=${nj}/g" $jobfn &&
-          sed -i "s/runtime=[0-9]\+/runtime=${runtime}/g" $jobfn &&
-          sed -i "s|write_bw_log=.\+|write_bw_log=${logfn}|g" $jobfn &&
-          sed -i "s|write_lat_log=.\+|write_lat_log=${logfn}|g" $jobfn &&
-          sed -i "s|write_iops_log=.\+|write_iops_log=${logfn}|g" $jobfn
+          [[ ! -z "$qd" ]] && sed -i "s/iodepth=[0-9]\+/iodepth=${qd}/g" $jobfn
+          [[ ! -z "$nj" ]] && sed -i "s/numjobs=[0-9]\+/numjobs=${nj}/g" $jobfn
+          [[ ! -z "$runtime" ]] && sed -i "s/runtime=[0-9]\+/runtime=${runtime}/g" $jobfn
+          [[ ! -z "$logfn" ]] && sed -i "s|write_bw_log=.\+|write_bw_log=${logfn}|g" $jobfn &&
+                                sed -i "s|write_lat_log=.\+|write_lat_log=${logfn}|g" $jobfn &&
+                                sed -i "s|write_iops_log=.\+|write_iops_log=${logfn}|g" $jobfn
+
+          [[ ! -z "$duprate" ]] && sed -i "s|dedupe_percentage=.\+|dedupe_percentage=${duprate}|g" $jobfn
+          [[ ! -z "$comprate" ]] && sed -i "s|buffer_compress_percentage=.\+|buffer_compress_percentage=${comprate}|g" $jobfn
         }
 
         client_args="$client_args --client $client $jobfn"

@@ -10,6 +10,8 @@ COUNTER_PATTERN=
 TITLE=
 FN=
 KEEPFILES=false
+DEDUP_RATE=
+COMPRESS_RATE=
 
 function usage {
   [[ ! -z $1 ]] && {
@@ -17,7 +19,9 @@ function usage {
     >&2 echo "ERROR:" $1
     echo
   }
-  echo "usage: $(basename $0) <logname> [-t iops|clat|slat|lat] [--title chart_title] [-k|--keep]"
+  len=$(expr length "usage: `basename $0`")
+  printf "usage: `basename $0` <logname> [-t iops|clat|slat|lat]%s\n"
+  printf "%${len}s [--title chart_title] [-k|--keep]\n" " "
   echo
   echo "options:"
   echo "  -k: keep temp files."
@@ -26,6 +30,7 @@ function usage {
   echo "examples:"
   echo "  $(basename $0) log/82rw*iops* -t iops  # plot iops chart for logs that the path match 'log/82rw*iops*' "
   echo
+
   exit 1
 }
 

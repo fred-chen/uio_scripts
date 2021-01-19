@@ -31,6 +31,8 @@ g_histogram = False
 g_keepfile = False
 g_startline = 0
 g_endline = 0
+g_dedup_rate = 50
+g_compress_rate = 0
 
 def usage(errmsg=""):
     if(errmsg != ""):
