@@ -359,7 +359,7 @@ def hist():
         try:
             bucket_num = int(math.log(max, 2)) + 2
         except ValueError as err:
-            E("%s\nmin=%d max=%d span=%d" % (err,min,max,span))
+            E("%s\nmin=%d max=%d" % (err,min,max))
             
         buckets = [ 0 for i in range(bucket_num) ]
         for v in values:
