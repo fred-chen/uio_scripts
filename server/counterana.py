@@ -17,7 +17,7 @@
         1. gnuplot installed
     # maintainer: Fred Chen
 """
-import sys, getopt, subprocess, re, math
+import sys, getopt, subprocess, re, math, os
 from functools import reduce
 
 g_counter_pattern = "^.+: .+$"  # counter pattern to match counter lines
