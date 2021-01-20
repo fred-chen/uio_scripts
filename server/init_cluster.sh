@@ -17,6 +17,7 @@ STOP_ONLY=false
 FORCE=false
 BOOT_ONLY=false
 CREATE_LUNS=false
+ATTACH_LUNS=false
 RPMDIR=
 CORE_DEV_SIZE_G=300
 
@@ -28,7 +29,8 @@ usage() {
   printf "%${len}s %s\n" " " "[-r|--replace rpm_dir]"
   printf "%${len}s %s\n" " " "[-d|--initbackend] [-G dump_size]"
   printf "%${len}s %s\n" " " "[-i|--initarray]"
-  printf "%${len}s %s\n" " " "[-c|--createluns --management_ip ip --iscsi_ip ip --topology ip,ip...]"
+  printf "%${len}s %s\n" " " "[-c|--createluns] [--management_ip ip --iscsi_ip ip --topology ip,ip...]"
+  printf "%${len}s %s\n" " " "[-a|--attachluns]"
   echo " -f: force (killing cio_array)"
   echo " -s: stop only"
   echo " -r: replace rpm packages"
@@ -37,6 +39,7 @@ usage() {
   echo " -G: prereserve size for coredump device"
   echo " -i: initialize array"
   echo " -c: create new luns and mappings"
+  echo " -a: attach all existing luns and mappings"
   echo " --management_ip: specify the management IP address for the federation"
   echo " --iscsi_ip:      specify the management IP address for the federation"
   echo " --topology:      specify the node IP addresses for the federation"
@@ -44,7 +47,7 @@ usage() {
 }
 
 handleopts() {
-    OPTS=`getopt -o r::dsfhbicG: -l replace:,initbackend,stoponly,initarray,createluns,management_ip:,iscsi_ip:,topology: -- "$@"`
+    OPTS=`getopt -o r::dsfhbicG:a -l replace:,initbackend,stoponly,initarray,createluns,management_ip:,iscsi_ip:,topology:attachluns -- "$@"`
     [[ $? -eq 0 ]] || usage
 
     eval set -- "$OPTS"
@@ -60,6 +63,7 @@ handleopts() {
             -s | --stoponly ) STOP_ONLY=true; shift 1;;
             -b | --bootonly ) BOOT_ONLY=true; shift 1;;
             -c | --createluns ) CREATE_LUNS=true; shift 1;;
+            -a | --createluns ) ATTACH_LUNS=true; shift 1;;
             --management_ip ) MANAGEMENT_IP=$2; shift 2;;
             --iscsi_ip ) ISCSI_IP=$2; shift 2;;
             --topology ) TOPOLOGY=$2; shift 2;;
@@ -86,7 +90,7 @@ detach_luns() {
   echo 'done.'
 }
 attach_luns() {
-  echo -n "detaching luns... "
+  echo -n "attaching luns... "
   is_ciorunning && {
     for n in `cioctl list | grep GB | awk '{print $2}' | grep -v '^-'`; do cioctl attach $n  > /dev/null 2>&1; done
     for n in `cioctl snapshot list | grep GiB | awk '{print $2}'`; do cioctl attach $n  > /dev/null 2>&1; done;
@@ -147,7 +151,7 @@ start_array() {
 push_topology() {
   is_ciorunning && {
     echo -n "pushing topology ..."
-    cioctl topology $TOPOLOGY > /dev/null 2>&1 || { echo "failed 'cioctl topology $TOPOLOGY'"; return 1; }
+    cioctl topology $TOPOLOGY > /dev/null 2>&1
     cioctl portal --management_ip $MANAGEMENT_IP --iscsi_ip $ISCSI_IP || { echo "failed 'cioctl portal --management_ip $MANAGEMENT_IP --iscsi_ip $ISCSI_IP'"; return 1; }
     echo "done."
   } || echo "cio isn't running."
@@ -191,6 +195,7 @@ main() {
   [[ ${INIT_BACKEND} == true ]] && uninit_array && init_backend
   [[ ${INIT_ARRAY} == true ]] && init_array && start_array
   [[ ${CREATE_LUNS} == true ]] && push_topology && create_luns
+  [[ ${ATTACH_LUNS} == true ]] && push_topology && attach_luns
 }
 
 main $@
