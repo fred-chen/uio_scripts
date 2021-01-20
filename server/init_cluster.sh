@@ -185,8 +185,8 @@ main() {
   handleopts $@
   echo "INIT_BACKEND=$INIT_BACKEND", "REPLACE=$REPLACE", "RPMDIR=$RPMDIR", "FORCE=$FORCE", "STOP_ONLY=$STOP_ONLY", "BOOT_ONLY=$BOOT_ONLY"
   [[ $STOP_ONLY == true ]] && stop_array && exit 0
-  [[ $BOOT_ONLY == true ]] && start_array && exit 0
   [[ $REPLACE == true ]] && stop_array && replace_rpm
+  [[ $BOOT_ONLY == true ]] && start_array && exit 0
   [[ ${INIT_BACKEND} == true ]] && uninit_array && init_backend
   [[ ${INIT_ARRAY} == true ]] && init_array && start_array
   [[ ${CREATE_LUNS} == true ]] && push_topology && create_luns
