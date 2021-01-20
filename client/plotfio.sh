@@ -34,35 +34,37 @@ function usage {
   exit 1
 }
 
-OPTS=`getopt -o ht:d:e:g:k -l help,title:,keep -- "$@"`
-[[ $? -eq 0 ]] || usage
-eval set -- "$OPTS"
-while true ; do
-    case "$1" in
-        -t) TYPE=$2; shift 2;;
-        -e) COUNTER_PATTERN=$2; shift 2;;
-        -g | --title) TITLE=$2; shift 2;;
-        -k | --keep) KEEPFILES=true; shift 1;;
-        -h | --help) shift 1; usage;;
-        --) shift; break;;
-    esac
-done
-[[ $# -ne 0 ]] && LOG_LIST="$@" || usage "must specify a logname(s)."
-for n in $LOG_LIST; do [[ ! -e $n ]] && { echo "'$n' doesn't exist."; exit 1; } ; done
-if [[ -z "$TYPE" ]]; then
-  for n in $LOG_LIST
-  do 
-    [[ $n =~ "_iops" ]] && TYPE="iops" && break
-    [[ $n =~ "_lat" ]] && TYPE="lat" && break
-    [[ $n =~ "_clat" ]] && TYPE="clat" && break
-    [[ $n =~ "_slat" ]] && TYPE="slat" && break
+handleopts() {
+  OPTS=`getopt -o ht:d:e:g:k -l help,title:,keep -- "$@"`
+  [[ $? -eq 0 ]] || usage
+  eval set -- "$OPTS"
+  while true ; do
+      case "$1" in
+          -t) TYPE=$2; shift 2;;
+          -e) COUNTER_PATTERN=$2; shift 2;;
+          -g | --title) TITLE=$2; shift 2;;
+          -k | --keep) KEEPFILES=true; shift 1;;
+          -h | --help) shift 1; usage;;
+          --) shift; break;;
+      esac
   done
-  [[ -z "$TYPE" ]] && TYPE="iops"
-  echo "warning: type not given(-t), using default: '$TYPE'"
-fi
+  [[ $# -ne 0 ]] && LOG_LIST="$@" || usage "must specify a logname(s)."
+  for n in $LOG_LIST; do [[ ! -e $n ]] && { echo "'$n' doesn't exist."; exit 1; } ; done
+  if [[ -z "$TYPE" ]]; then
+    for n in $LOG_LIST
+    do 
+      [[ $n =~ "_iops" ]] && TYPE="iops" && break
+      [[ $n =~ "_lat" ]] && TYPE="lat" && break
+      [[ $n =~ "_clat" ]] && TYPE="clat" && break
+      [[ $n =~ "_slat" ]] && TYPE="slat" && break
+    done
+    [[ -z "$TYPE" ]] && TYPE="iops"
+    echo "warning: type not given(-t), using default: '$TYPE'"
+  fi
 
-[[ -z "$TITLE" ]] && TITLE="$TYPE chart"
-FN=`echo $TITLE | sed 's/ /_/g'`
+  [[ -z "$TITLE" ]] && TITLE="$(basename `dirname $(echo ${LOG_LIST[0]} | cut -d' ' -f1)`) $TYPE chart"
+  FN=`echo $TITLE | sed 's/ /_/g'`
+}
 
 list_files() {
   # get the fio log interval from one of the log files
@@ -137,6 +139,7 @@ plot_lat() {
 }
 
 main() {
+  handleopts "$@"
   case "${TYPE}" in
     iops)
       plot_iops
@@ -150,4 +153,4 @@ main() {
   esac
 }
 
-main $@
+main "$@"
