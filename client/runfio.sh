@@ -80,9 +80,14 @@ main() {
     for nj in $njobs
     do
       client_args=
-      joblogdir=$logdir/$jobtype.qd$qd.njobs$nj.${runtime}s && mkdir -p $joblogdir
-      jsonfn=$outputdir/$jobtype.qd$qd.njobs$nj.json
-      logfn=$joblogdir/$jobtype.qd$qd.njobs$nj.${runtime}s
+      jobstr="$jobtype.qd$qd.njobs$nj" &&
+      [[ ! -z "$duprate" ]] && jobstr="${jobstr}.${duprate}dup" &&
+      [[ ! -z "$comprate" ]] && jobstr="${jobstr}.${comprate}comp" &&
+      jobstr="${jobstr}.${runtime}s"
+
+      joblogdir="$logdir/${jobstr}" && mkdir -p $joblogdir
+      jsonfn=$outputdir/$jobstr.json
+      logfn=$joblogdir/$jobstr
       for client in $clients
       do
         jobfn=$profiledir/${jobtype}_$client.fio
@@ -101,7 +106,7 @@ main() {
         client_args="$client_args --client $client $jobfn"
       done
       args="--output=$jsonfn --output-format=json"
-      echo -n "starting ${jobtype} iodepth=$qd njobs=$nj ... "
+      echo -n "starting ${jobstr} ... "
       fio $args $client_args
       echo "done"
     done

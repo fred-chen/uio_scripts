@@ -107,7 +107,7 @@ function main() {
   printf '=%.0s' {1..40} && echo
   for t in ${TYPE}
   do
-    ls -la ${PREFIX}*.${t}.*${TIME}*${EXCL_SUFFIX}*svg
+    ls -la `pwd`/${PREFIX}*.${t}.*${TIME}*${EXCL_SUFFIX}*svg
   done
 
   [[ $KEEPFILES = false ]] && rm -f *.data *.folded *.stacks *.data.old

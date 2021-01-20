@@ -336,7 +336,7 @@ def plot_counter():
             print("out=%s\nerr=%s\nrt=%d" % ("".join(out), "".join(err), rt))
         if (not g_keepfile):
             runcmd("rm -f %s" % (plotdatafilename))
-        subprocess.call("ls %s" % (plotfilename), shell=True)
+        subprocess.call("ls %s/%s" % ( os.getcwd(), plotfilename ), shell=True)
 
 def hist():
     """

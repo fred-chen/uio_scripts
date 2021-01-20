@@ -103,7 +103,7 @@ plot_iops() {
    "
    echo "done."
    [[ ${KEEPFILES} == false ]] && rm -f plot_$FN.plotdata
-   echo plot_$FN.png
+   ls `pwd`/plot_$FN.png
 }
 plot_lat() {
   list_files
@@ -133,7 +133,7 @@ plot_lat() {
    "
    echo "done."
    [[ ${KEEPFILES} == false ]] && rm -f plot_$FN.plotdata
-   echo plot_$FN.png
+   ls `pwd`/plot_$FN.png
 }
 
 main() {
