@@ -31,6 +31,7 @@ usage() {
   printf "%${len}s %s\n" " " "[-c|--createluns --management_ip ip --iscsi_ip ip --topology ip,ip...]"
   echo " -f: force (killing cio_array)"
   echo " -s: stop only"
+  echo " -r: replace rpm packages"
   echo " -b: start objmgr and objmgr-fab"
   echo " -d: initialize backend"
   echo " -G: prereserve size for coredump device"
@@ -79,16 +80,16 @@ is_arrayrunning() {
 detach_luns() {
   echo -n "detaching luns... "
   is_ciorunning && {
-    for n in `cioctl list | grep GiB | awk '{print $2}' | grep -v '^-'`; do cioctl detach $n; done
-    for n in `cioctl snapshot list | grep GiB | awk '{print $2}'`; do cioctl detach $n; done;
+    for n in `cioctl list | grep GB | awk '{print $2}' | grep -v '^-'`; do cioctl detach $n  > /dev/null 2>&1; done
+    for n in `cioctl snapshot list | grep GiB | awk '{print $2}'`; do cioctl detach $n  > /dev/null 2>&1; done;
   }
   echo 'done.'
 }
 attach_luns() {
   echo -n "detaching luns... "
   is_ciorunning && {
-    for n in `cioctl list | grep GiB | awk '{print $2}' | grep -v '^-'`; do cioctl attach $n; done
-    for n in `cioctl snapshot list | grep GiB | awk '{print $2}'`; do cioctl attach $n; done;
+    for n in `cioctl list | grep GB | awk '{print $2}' | grep -v '^-'`; do cioctl attach $n  > /dev/null 2>&1; done
+    for n in `cioctl snapshot list | grep GiB | awk '{print $2}'`; do cioctl attach $n  > /dev/null 2>&1; done;
   }
   echo 'done.'
 }
@@ -119,13 +120,13 @@ create_luns() {
 }
 stop_array() {
   is_arrayrunning && {
-    detach_luns >/dev/null 2>&1 || true
+    detach_luns || true
     [[ ${FORCE} == true ]] && { echo -n "force stopping array... "; [[ ! -z "`pidof cio_array`" ]] && kill `pidof cio_array`; } || echo -n "stopping array... "
     systemctl stop objmgr  > /dev/null 2>&1 || { echo "failed 'systemctl stop objmgr'."; return 1; }
     systemctl stop objmgr-fab  > /dev/null 2>&1 || { echo "failed 'systemctl stop objmgr-fab'."; return 1; }
     rmmod objblk > /dev/null 2>&1 || true
     echo "done."
-  }
+  } || return 0
 }
 
 start_array() {
