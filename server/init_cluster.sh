@@ -81,6 +81,11 @@ is_ciorunning() {
 is_arrayrunning() {
   [[ $(pgrep -nx cio_array|wc -l) -gt 0 ]] && return 0 || return 1
 }
+topo_exist() {
+  is_ciorunning && { 
+    [[ `cioctl node | grep UP | wc -l` -gt 0 ]] && return 0 || return 1
+  }
+}
 detach_luns() {
   echo -n "detaching luns... "
   is_ciorunning && {
@@ -149,7 +154,7 @@ start_array() {
   echo "done."
 }
 push_topology() {
-  is_ciorunning && {
+  topo_exist && {
     echo -n "pushing topology ..."
     cioctl topology $TOPOLOGY > /dev/null 2>&1
     cioctl portal --management_ip $MANAGEMENT_IP --iscsi_ip $ISCSI_IP || { echo "failed 'cioctl portal --management_ip $MANAGEMENT_IP --iscsi_ip $ISCSI_IP'"; return 1; }
