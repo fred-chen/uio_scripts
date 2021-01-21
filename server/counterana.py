@@ -22,6 +22,7 @@ from functools import reduce
 
 g_counter_pattern = "^.+: .+$"  # counter pattern to match counter lines
 g_plot = False
+g_combine = False
 g_log_list = ""
 g_ramplines = 0
 data=[]             # raw data: counter_name, value, unit
@@ -37,7 +38,7 @@ g_compress_rate = 0
 def usage(errmsg=""):
     if(errmsg != ""):
         sys.stderr.write("\nERROR: %s\n" % errmsg)
-    print("usage:%s [logname] [-e counter_pattern] [-i] [-g|--graph] [-m|--histogram] [-r|--ramplines] [-k] [--startline n] [--endline n]" % sys.argv[0])
+    print("usage:%s [logname] [-e counter_pattern] [-i] [-g|--graph] [-c|--combine] [-m|--histogram] [-r|--ramplines] [-k] [--startline n] [--endline n]" % sys.argv[0])
     print(
         "\n" "Analyze UniIO counter log files." "\n" 
         "\n" 
@@ -45,6 +46,7 @@ def usage(errmsg=""):
         "  -e pattern:       filter of counter names" "\n"
         "  -i:               ignore case" "\n"
         "  -g, --graph:      plot a scatter graph for counters" "\n"
+        "  -c, --combine:    use with '-g', draw all data onto a single chart"
         "  -m, --histogram:  print histogram (log2 buckets)" "\n"
         "  -r, --ramplines:  ramping lines. to skip first and last few lines of data" "\n"
         "  --startline:      specify a start line, to only analyze lines after that line" "\n"
@@ -61,6 +63,7 @@ def usage(errmsg=""):
         "  grep ss.obs counter.log | counterana.py  # same as above" "\n"
          "\n"
         "  counterana.py counter.log -e ss.obs -g   # report counters that contains 'ss.obs' and plot a graph for each of the counters" "\n" 
+        "  counterana.py counter.log -e ss.obs -gc  # report counters that contains 'ss.obs' and plot all counter data onto a single graph" "\n" 
         "  counterana.py counter.log -e ss.obs -m   # report counters that contains 'ss.obs' and print the histogram for each of the counters" "\n"
          "\n"
         "  counterana.py counter.log --startline=60 --endline=120   # report all conter data betwen 60min ~ 120min (if sample interval is 60s) " "\n" 
@@ -106,14 +109,11 @@ def log_names():
 def sample_count():
     out, err, v = runcmd("cat %s | grep -E '([0-9]{2}:){2}[0-9]{2}' | wc -l" % (log_names()))
     return int("".join(out))
-def counter_count():
-    out, err, v = runcmd("cat %s | grep -iE %s | awk '{print $1}' | sort | uniq | wc -l" % (log_names(), g_counter_pattern))
-    return int("".join(out))
 
 def handleopts():
-    global g_counter_pattern, g_log_list, g_plot, g_ramplines, g_histogram, g_keepfile, g_startline, g_endline
+    global g_counter_pattern, g_log_list, g_plot, g_ramplines, g_histogram, g_keepfile, g_startline, g_endline, g_combine
     try:
-        options, args = getopt.gnu_getopt(sys.argv[1:], "he:gr:m", ["help","graph","ramplines=","histogram","startline=","endline="])
+        options, args = getopt.gnu_getopt(sys.argv[1:], "he:gr:mc", ["help","graph","ramplines=","histogram","startline=","endline=","combine"])
     except getopt.GetoptError as err:
         usage(err)
     for o, a in options:
@@ -121,6 +121,8 @@ def handleopts():
             g_counter_pattern = a
         if(o in ('-g', '--graph')): 
             g_plot = True
+        if(o in ('-c', '--combine')): 
+            g_combine = True
         if(o in ('-h', '--help')): 
             usage() 
         if(o in ('-r','--ramplines')):
@@ -161,7 +163,7 @@ def build_data():
     if(not file_names.strip()):
         file_in = sys.stdin
     else:
-        subprocess.call("cat %s | grep -iE '%s' > counters_tmp.txt" % (file_names, g_counter_pattern), shell=True)
+        subprocess.call("cat %s > counters_tmp.txt" % (file_names), shell=True)
         file_in = open("counters_tmp.txt", 'r')
 
     regNumber = re.compile("^\d+$")
@@ -229,6 +231,9 @@ def build_data():
         except Exception as err:
             print(line)
             print("append exception: %s" % err)
+    if (not data):
+        print ("no data that matches '%s'." % (g_counter_pattern))
+        exit(1)
     aggregated_array = {} # build a dict { counter_name -> ([value1, value2 ...], unit) }
     for c in data: # [ counter_name, value, unit ]
         counter_name = c[0]; value = c[1]; unit = c[2]
@@ -305,8 +310,65 @@ def deviate():
             (counter_name, len(values), unit, trend, min, max, mean, standard_deviation, pct_stddev, slop))
     return d
 
+"""
+    combine counter data and plot them onto a single chart
+"""
+def plot_counter_combined():
+    global aggregated_array, g_keepfile, g_startline, g_endline, g_ramplines
+
+    printsepline(sys.stderr)
+    unit = None; maxline = 0
+    for counter_name in aggregated_array.keys():
+        unit = aggregated_array[counter_name][1]
+        maxline = len(aggregated_array[counter_name][0]) if len(aggregated_array[counter_name][0]) > maxline else maxline
+    """
+      output format:   minute counter_name1 counter_name2 counter_name3 ...
+                       0      1_v1          2_v1          3_v1
+                       ...
+    """
+    counter_names = aggregated_array.keys()
+    header = "Minute"
+    for counter_name in counter_names:
+        header += " " + counter_name
+    if len(counter_names) > 1:
+        plotdatafilename = ("%s_more.plotdata" % (counter_names[0])).replace('/','_')
+    else:
+        plotdatafilename = ("%s.plotdata" % (counter_names[0])).replace('/','_')
+    f = open(plotdatafilename, 'w')
+    f.write("%s\n" % (header))
+    line=""
+    for i in range(maxline):
+        line = "%d" % (i)
+        for counter_name in counter_names:
+            try:
+                line += " %f" % (aggregated_array[counter_name][0][i])
+            except Exception as err:
+                print("aggregated_array[%s][%d]: %s" % (counter_name, i, err))
+                line += " 0"
+        f.write("%s\n" % (line))
+    f.close()
+    plotfilename = ("%s.png" % (plotdatafilename)).replace('/','_')
+    plotcmd = ( "gnuplot -e \"set grid; set autoscale; set key spacing 2; "
+                "set xlabel 'Time (Minute)'; set ylabel '[%s]'; "
+                "set xtics autofreq; "
+                "set title 'combined chart' font ',20'; "
+                "set terminal png size 1200,600; set output '%s'; "
+                "set key autotitle columnheader; "
+                "plot for [i=2:%s] '%s' using 1:i with lines lw 3\"" %
+                (unit, plotfilename, len(counter_names)+1, plotdatafilename)
+                )
+    out, err, rt = runcmd(plotcmd)
+    if (rt != 0):
+        print("out=%s\nerr=%s\nrt=%d" % ("".join(out), "".join(err), rt))
+    if (not g_keepfile):
+        runcmd("rm -f %s" % (plotdatafilename))
+    subprocess.call("ls %s/%s" % ( os.getcwd(), plotfilename ), shell=True)
+
+"""
+    plot a chart for each counter
+"""
 def plot_counter():
-    global aggregated_array, g_keepfile, g_startline, g_endline
+    global aggregated_array, g_keepfile, g_startline, g_endline, g_ramplines
 
     printsepline(sys.stderr)
     for counter_name in aggregated_array.keys():
@@ -337,6 +399,7 @@ def plot_counter():
         if (not g_keepfile):
             runcmd("rm -f %s" % (plotdatafilename))
         subprocess.call("ls %s/%s" % ( os.getcwd(), plotfilename ), shell=True)
+
 
 def hist():
     """
@@ -380,5 +443,9 @@ if __name__ == "__main__":
     build_data()
     deviate()
     if (g_histogram): hist()
-    if (g_plot): plot_counter()
+    if (g_plot): 
+        if (g_combine): 
+            plot_counter_combined()
+        else:
+            plot_counter()
 
