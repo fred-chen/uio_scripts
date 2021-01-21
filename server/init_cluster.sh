@@ -45,7 +45,6 @@ usage() {
   echo " --topology:      specify the node IP addresses for the federation"
   exit 1
 }
-
 handleopts() {
     OPTS=`getopt -o r::dsfhbicG:a -l replace:,initbackend,stoponly,initarray,createluns,management_ip:,iscsi_ip:,topology:attachluns -- "$@"`
     [[ $? -eq 0 ]] || usage
@@ -63,7 +62,7 @@ handleopts() {
             -s | --stoponly ) STOP_ONLY=true; shift 1;;
             -b | --bootonly ) BOOT_ONLY=true; shift 1;;
             -c | --createluns ) CREATE_LUNS=true; shift 1;;
-            -a | --createluns ) ATTACH_LUNS=true; shift 1;;
+            -a | --attachluns ) ATTACH_LUNS=true; shift 1;;
             --management_ip ) MANAGEMENT_IP=$2; shift 2;;
             --iscsi_ip ) ISCSI_IP=$2; shift 2;;
             --topology ) TOPOLOGY=$2; shift 2;;
@@ -74,17 +73,11 @@ handleopts() {
         esac
     done
 }
-
 is_ciorunning() {
   [[ $(ps -ef|grep fabric-manager.jar|grep -v grep|wc -l) -gt 0 ]] && return 0 || return 1
 }
 is_arrayrunning() {
-  [[ $(pgrep -nx cio_array|wc -l) -gt 0 ]] && return 0 || return 1
-}
-topo_exist() {
-  is_ciorunning && { 
-    [[ `cioctl node | grep UP | wc -l` -gt 0 ]] && return 0 || return 1
-  }
+  [[ `pgrep -nx cio_array|wc -l` -gt 0 ]] && return 0 || return 1
 }
 detach_luns() {
   echo -n "detaching luns... "
@@ -115,7 +108,7 @@ delete_luns() {
   echo "done."
 }
 create_luns() {
-  is_ciorunning && {
+  is_ciorunning && is_arrayrunning && {
     cioctl iscsi initiator create --name i155 --iqn iqn.1994-05.com.redhat:c031f7521388
     cioctl iscsi initiator create --name i169 --iqn iqn.1994-05.com.redhat:2e515e5f713
     cioctl iscsi initiator create --name i156 --iqn iqn.2020-02.naming.authority:unique-156
@@ -127,6 +120,7 @@ create_luns() {
   }
   cioctl list
 }
+
 stop_array() {
   is_arrayrunning && {
     detach_luns || true
@@ -154,12 +148,12 @@ start_array() {
   echo "done."
 }
 push_topology() {
-  topo_exist && {
+  is_ciorunning && {
     echo -n "pushing topology ..."
     cioctl topology $TOPOLOGY > /dev/null 2>&1
     cioctl portal --management_ip $MANAGEMENT_IP --iscsi_ip $ISCSI_IP || { echo "failed 'cioctl portal --management_ip $MANAGEMENT_IP --iscsi_ip $ISCSI_IP'"; return 1; }
     echo "done."
-  } || echo "cio isn't running."
+  } || echo "cio is not running."
 }
 replace_rpm() {
   for n in ${RPMDIR}/*.rpm
@@ -192,7 +186,7 @@ init_array() {
 }
 
 main() {
-  handleopts $@
+  handleopts "$@"
   echo "INIT_BACKEND=$INIT_BACKEND", "REPLACE=$REPLACE", "RPMDIR=$RPMDIR", "FORCE=$FORCE", "STOP_ONLY=$STOP_ONLY", "BOOT_ONLY=$BOOT_ONLY"
   [[ $STOP_ONLY == true ]] && stop_array && exit 0
   [[ $REPLACE == true ]] && stop_array && replace_rpm
@@ -203,4 +197,4 @@ main() {
   [[ ${ATTACH_LUNS} == true ]] && push_topology && attach_luns
 }
 
-main $@
+main "$@"
