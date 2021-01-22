@@ -20,7 +20,7 @@
 import sys, getopt, subprocess, re, math, os
 from functools import reduce
 
-g_counter_pattern = "^.+: .+$"  # counter pattern to match counter lines
+g_counter_pattern = []  # counter pattern to match counter lines "^.+: .+$",
 g_plot = False
 g_combine = False
 g_log_list = ""
@@ -118,7 +118,7 @@ def handleopts():
         usage(err)
     for o, a in options:
         if(o in ('-e')):
-            g_counter_pattern = a
+            g_counter_pattern.append(a)
         if(o in ('-g', '--graph')): 
             g_plot = True
         if(o in ('-c', '--combine')): 
@@ -139,6 +139,8 @@ def handleopts():
             g_endline = int(a)
 
     g_log_list = args
+    if (not g_counter_pattern):
+        g_counter_pattern=["^.+: .+$",]
 
 def build_data():
     """
@@ -167,15 +169,25 @@ def build_data():
         file_in = open("counters_tmp.txt", 'r')
 
     regNumber = re.compile("^\d+$")
-    if g_ignore_case:
-        regCounter = re.compile(g_counter_pattern, re.IGNORECASE)
-    else:
-        regCounter = re.compile(g_counter_pattern)
+    regCounters = []
+    for pattern in g_counter_pattern:
+        if g_ignore_case:
+            regCounter = re.compile(pattern, re.IGNORECASE)
+        else:
+            regCounter = re.compile(pattern)
+        regCounters.append(regCounter)
     lines = file_in.readlines()
     totallinenum = len(lines)
     curlinenum = 0
     for line in lines:
-        if (not regCounter.search(line)): continue
+        found = False
+        for reg in regCounters:
+            if (not reg.search(line)): 
+                continue
+            else:
+                found = True
+                break
+        if (not found): continue
         curlinenum += 1
         pct = "%d" % (curlinenum * 100 / totallinenum)
         if (curlinenum % 50 == 0): 
@@ -331,7 +343,7 @@ def plot_counter_combined():
     for counter_name in counter_names:
         header += " " + counter_name
     if len(counter_names) > 1:
-        plotdatafilename = ("%s_more.plotdata" % (counter_names[0])).replace('/','_')
+        plotdatafilename = ("%s...%d_counters.combined" % (counter_names[0], len(counter_names))).replace('/','_')
     else:
         plotdatafilename = ("%s.plotdata" % (counter_names[0])).replace('/','_')
     f = open(plotdatafilename, 'w')
