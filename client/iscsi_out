@@ -1,0 +1,10 @@
+#!/usr/bin/bash
+
+NODES='192.168.100.155 192.168.100.169 192.168.100.156'
+for h in ${NODES}
+do
+CMDPREFIX="ssh -o StrictHostKeyChecking=no root@${h}"
+eval "${CMDPREFIX} iscsiadm -m node --logout"
+eval "${CMDPREFIX} iscsiadm -m session -u"
+eval "${CMDPREFIX} iscsiadm -m discoverydb -t sendtargets -p 192.168.60.253:3260 -o delete"
+done

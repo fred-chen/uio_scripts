@@ -1,0 +1,13 @@
+#!/usr/bin/bash
+
+NODES='192.168.100.155 192.168.100.169 192.168.100.156'
+for h in ${NODES}
+do
+CMDPREFIX="ssh -o StrictHostKeyChecking=no root@${h}"
+eval "${CMDPREFIX} iscsiadm -m discovery -t st -p 192.168.60.253"
+eval "${CMDPREFIX} iscsiadm -m node --login -p 192.168.60.253"
+eval "${CMDPREFIX} killall -9 fio"
+eval "${CMDPREFIX} fio --server --daemonize=/tmp/fio.pid"
+done
+
+
