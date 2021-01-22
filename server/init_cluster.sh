@@ -20,6 +20,7 @@ CREATE_LUNS=false
 ATTACH_LUNS=false
 RPMDIR=
 CORE_DEV_SIZE_G=300
+NUM_LUNS=18
 
 usage() {
   [[ -z "$1" ]] || echo "Error: $1"
@@ -29,7 +30,7 @@ usage() {
   printf "%${len}s %s\n" " " "[-r|--replace rpm_dir]"
   printf "%${len}s %s\n" " " "[-d|--initbackend] [-G dump_size]"
   printf "%${len}s %s\n" " " "[-i|--initarray]"
-  printf "%${len}s %s\n" " " "[-c|--createluns] [--management_ip ip --iscsi_ip ip --topology ip,ip...]"
+  printf "%${len}s %s\n" " " "[-c|--createluns num_luns] [--management_ip ip --iscsi_ip ip --topology ip,ip...]"
   printf "%${len}s %s\n" " " "[-a|--attachluns]"
   echo " -f: force (killing cio_array)"
   echo " -s: stop only"
@@ -46,7 +47,7 @@ usage() {
   exit 1
 }
 handleopts() {
-    OPTS=`getopt -o r::dsfhbicG:a -l replace:,initbackend,stoponly,initarray,createluns,management_ip:,iscsi_ip:,topology:attachluns -- "$@"`
+    OPTS=`getopt -o r::dsfhbic::G:a -l replace:,initbackend,stoponly,initarray,createluns::,management_ip:,iscsi_ip:,topology:attachluns -- "$@"`
     [[ $? -eq 0 ]] || usage
 
     eval set -- "$OPTS"
@@ -61,7 +62,7 @@ handleopts() {
             -i | --initarray ) INIT_ARRAY=true; shift 1;;
             -s | --stoponly ) STOP_ONLY=true; shift 1;;
             -b | --bootonly ) BOOT_ONLY=true; shift 1;;
-            -c | --createluns ) CREATE_LUNS=true; shift 1;;
+            -c | --createluns ) CREATE_LUNS=true; NUM_LUNS=$2; shift 2;;
             -a | --attachluns ) ATTACH_LUNS=true; shift 1;;
             --management_ip ) MANAGEMENT_IP=$2; shift 2;;
             --iscsi_ip ) ISCSI_IP=$2; shift 2;;
@@ -72,6 +73,7 @@ handleopts() {
             --) shift; break;;
         esac
     done
+    [[ -z "$NUM_LUNS" ]] && NUM_LUNS=18
 }
 is_ciorunning() {
   [[ $(ps -ef|grep fabric-manager.jar|grep -v grep|wc -l) -gt 0 ]] && return 0 || return 1
@@ -114,9 +116,9 @@ create_luns() {
     cioctl iscsi initiator create --name i156 --iqn iqn.2020-02.naming.authority:unique-156
     cioctl iscsi initiatorgroup create --name igall --initiators i155,i156,i169
 
-    for n in `seq 1 18`; do cioctl create lun$n 500G; done
-    for n in `seq 1 18`; do cioctl iscsi target create --name tgt-$n; done
-    for n in `seq 1 18`; do cioctl iscsi mapping create --blockdevice lun$n --target tgt-$n --initiatorgroup igall; done
+    for n in `seq 1 $NUM_LUNS`; do cioctl create lun$n 500G; done
+    for n in `seq 1 $NUM_LUNS`; do cioctl iscsi target create --name tgt-$n; done
+    for n in `seq 1 $NUM_LUNS`; do cioctl iscsi mapping create --blockdevice lun$n --target tgt-$n --initiatorgroup igall; done
   }
   cioctl list
 }
