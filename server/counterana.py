@@ -142,6 +142,37 @@ def handleopts():
     if (not g_counter_pattern):
         g_counter_pattern=["^.+: .+$",]
 
+def suitable_unit(v, u):
+    """
+        find the most suitable unit
+        return: (unit, factor)
+    """
+    factor = 1; unit = u
+    if (u == 'nSec'):  # time
+        if ( 10**3 <= v < 10**6 ):
+            unit = 'uSec'; factor = 10**3
+        elif ( 10**6 <= v < 10**9 ):
+            unit = 'mSec'; factor = 10**6
+        elif (10**9 <= v):
+            unit = 'Sec'; factor = 10**9
+        else:
+            pass
+    elif (u == 'B'):   # size
+        if ( 2**10 <= v < 2**20 ):
+            unit = 'KiB'; factor = 2**10
+        elif ( 2**20 <= v < 2**30 ):
+            unit = 'MiB'; factor = 2**20
+        elif ( 2**30 <= v < 2**40 ):
+            unit = 'GiB'; factor = 2**30
+        elif ( 2**40 <= v < 2**50 ):
+            unit = 'TiB'; factor = 2**40
+        elif (2**50 <= v):
+            unit = 'PiB'; factor = 2**50
+        else:
+            pass
+    else: pass
+    return unit, factor
+
 def build_data():
     """
         read all counters to a global array 'data': [ counter_name, value, unit ]
@@ -159,7 +190,7 @@ def build_data():
     #   size in GiB: e.g. ss.dp.compressed_bytes: 794.00GiB
     #   size in TiB: e.g. ss.dp.uncompressed_bytes: 1.00TiB
     #   size in Byte: e.g. ss.dp.localcache_bytes: 0.00B 
-    global data, g_ignore_case, aggregated_array, g_keepfile
+    global data, g_ignore_case, aggregated_array, g_keepfile, g_startline, g_endline, g_ramplines
 
     file_names = " ".join(g_log_list)
     if(not file_names.strip()):
@@ -205,36 +236,35 @@ def build_data():
             else:
                 unit = lst[1][-3:]
                 if (unit == "PiB"): 
-                    value = float(value) * 1024 * 1024 * 1024 * 1024
+                    value = float(value) * 1024 * 1024 * 1024 * 1024 * 1024
                 elif (unit == "TiB"):
-                    value = float(value) * 1024 * 1024 * 1024
+                    value = float(value) * 1024 * 1024 * 1024 * 1024
                 elif (unit == "GiB"):
-                    value = float(value) * 1024 * 1024
+                    value = float(value) * 1024 * 1024 * 1024
                 elif (unit == "MiB"):
-                    value = float(value) * 1024
+                    value = float(value) * 1024 * 1024
                 elif (unit == "KiB"):
-                    value = float(value)
+                    value = float(value) * 1024
                 elif (unit[2] == "B"):  # for counters like: countername: 0.00B
                     value = float(lst[1][:-1])
-                    value = value / 1024.0
                 else:
                     print("unknown unit: %s" % (line))
                     exit(1)
-                unit = "KiB"
+                unit = "B"
             # print unit
             # print("name:{0}\tvalue:{1}\tunit:{2}\n".format(counter_name, value, unit))
         elif (len(lst) == 3): # time
             value = float(lst[1])
             unit = lst[2]
             if (unit == "Sec"):
-                value = value * 1000.0 * 1000.0
+                value = value * 1000.0 * 1000.0 * 1000.0
             if (unit == "mSec"):
-                value = value * 1000.0
+                value = value * 1000.0 * 1000.0
             if (unit == "uSec"):
-                pass
+                value = value * 1000.0
             if (unit == "nSec"):
-                value = value / 1000.0
-            unit = "uSec"
+                pass
+            unit = "nSec"
         else:
             sys.stderr.write("unidentified counter: %s\n" % (line))
             value = unit = "exception value and unit"
@@ -246,13 +276,22 @@ def build_data():
     if (not data):
         print ("no data that matches '%s'." % (g_counter_pattern))
         exit(1)
-    aggregated_array = {} # build a dict { counter_name -> ([value1, value2 ...], unit) }
+    
+    # build a dict { counter_name -> ([value1, value2 ...], unit) }
+    aggregated_array = {} 
     for c in data: # [ counter_name, value, unit ]
         counter_name = c[0]; value = c[1]; unit = c[2]
         if (aggregated_array.has_key(counter_name)):
             aggregated_array[counter_name][0].append(value)
         else:
             aggregated_array[counter_name] = ([value], unit)
+    # filter out lines that aren't in range
+    for counter_name in aggregated_array.keys():
+        unit = aggregated_array[counter_name][1]
+        values = aggregated_array[counter_name][0]
+        endline = g_endline-g_ramplines if g_endline else len(aggregated_array[counter_name][0])-g_ramplines
+        aggregated_array[counter_name] = (values[ g_startline + g_ramplines : endline ], unit)
+
     if (not g_keepfile):
         runcmd("rm -f %s" % ("counters_tmp.txt"))
     sys.stderr.write("\rbuilding aggregated array ... done.%s\n" % (' ' * 40))
@@ -271,9 +310,7 @@ def deviate():
     printsepline(sys.stderr)
     d = {}
     for counter_name in aggregated_array.keys():
-        values = aggregated_array[counter_name][0]; 
-        endline = g_endline-g_ramplines if g_endline else len(values)-g_ramplines
-        values = values[g_startline+g_ramplines:endline]
+        values = aggregated_array[counter_name][0]; values = values[:]
         unit = aggregated_array[counter_name][1]
         min = 9999999999999999999999999.0
         max = -999999999999999999999999.0
@@ -287,6 +324,10 @@ def deviate():
                 print (values)
                 print ("TypeError: %s" % (err), counter_name, unit)
                 exit(1)
+        unit, factor = suitable_unit(min, unit)
+        min = min / factor
+        max = max / factor
+        sum = sum / factor
 
         sample_count = len(values)
         mean = sum / sample_count
@@ -294,6 +335,7 @@ def deviate():
         x = 0; xl = range(len(values)); xmean = average(xl)
         sigmaXY = 0; sigmaXX = 0
         for v in values:
+            v = v / factor
             sse += (v-mean)**2
             # linear regression of slop
             sigmaXY += (xl[x] - xmean) * (v - mean)
@@ -329,16 +371,33 @@ def plot_counter_combined():
     global aggregated_array, g_keepfile, g_startline, g_endline, g_ramplines
 
     printsepline(sys.stderr)
-    unit = None; maxline = 0
-    for counter_name in aggregated_array.keys():
+
+    # build a new dict for matched lines and convert values to with unit 
+    min = 9999999999999999999999999.0
+    max = -999999999999999999999999.0
+    unit = None; yunit = None; maxline = 0
+    counter_revalues = {}  # new dict { counter_name : [ [ revalue1, revalue2, ... ], unit ]}
+    for counter_name in aggregated_array.keys():  # find out min and max of all counters
         unit = aggregated_array[counter_name][1]
-        maxline = len(aggregated_array[counter_name][0]) if len(aggregated_array[counter_name][0]) > maxline else maxline
+        values = aggregated_array[counter_name][0]; values = values[:]
+        counter_revalues[counter_name] = [values, unit]
+        maxline = len(values) if len(values) > maxline else maxline
+        for v in values:
+            if v < min: min = v
+            elif v > max: max = v; yunit = unit
+    
+    unit, factor = suitable_unit(min, yunit) # find the most suitable unit
+    for counter_name in counter_revalues.keys():
+        counter_revalues[counter_name][0] = [ x / factor for x in counter_revalues[counter_name][0] ]
+        counter_revalues[counter_name][1] = unit
+
     """
+      generating plot data file
       output format:   minute counter_name1 counter_name2 counter_name3 ...
                        0      1_v1          2_v1          3_v1
                        ...
     """
-    counter_names = aggregated_array.keys()
+    counter_names = counter_revalues.keys()
     header = "Minute"
     for counter_name in counter_names:
         header += " " + counter_name
@@ -350,10 +409,10 @@ def plot_counter_combined():
     f.write("%s\n" % (header))
     line=""
     for i in range(maxline):
-        line = "%d" % (i)
+        line = "%d" % (i + g_startline + g_ramplines)
         for counter_name in counter_names:
             try:
-                line += " %f" % (aggregated_array[counter_name][0][i])
+                line += " %f" % (counter_revalues[counter_name][0][i])
             except Exception as err:
                 print("aggregated_array[%s][%d]: %s" % (counter_name, i, err))
                 line += " 0"
@@ -385,10 +444,18 @@ def plot_counter():
     printsepline(sys.stderr)
     for counter_name in aggregated_array.keys():
         unit = aggregated_array[counter_name][1]
-        values = aggregated_array[counter_name][0]; 
-        endline = g_endline-g_ramplines if g_endline else len(values)-g_ramplines
-        values = values[g_startline+g_ramplines:endline]
-        values_sorted = sorted(values, reverse=True)
+        values = aggregated_array[counter_name][0]; values = values[:]
+
+        min = 9999999999999999999999999.0
+        max = -999999999999999999999999.0
+        sum = 0
+        for v in values:
+            if v < min: min = v 
+            elif v > max: max = v
+            
+        unit, factor = suitable_unit(min, unit)
+        values = [ x / factor for x in values ]
+
         values_zipped = zip(range(len(values)),values)
         plotdatafilename = ("%s.plotdata" % (counter_name)).replace('/','_')
         f = open(plotdatafilename, 'w')
@@ -422,8 +489,6 @@ def hist():
     global aggregated_array
     for counter_name in aggregated_array.keys():
         values = aggregated_array[counter_name][0]; 
-        endline = g_endline-g_ramplines if g_endline else len(values)-g_ramplines
-        values = values[g_startline+g_ramplines:endline]
         unit = aggregated_array[counter_name][1]
         print("\nHistogram for %s (%s) ... %d samples." % (counter_name, unit, len(values)))
         min = max = values[0]
