@@ -5,6 +5,7 @@
 # Maintainer: Fred Chen
 
 PLOT_INTERVAL=60  # plot PLOT_INTERVAL on x: 60 seconds
+LOG_INTERVAL=
 TYPE=
 COUNTER_PATTERN=
 TITLE=
@@ -111,8 +112,9 @@ plot_lat() {
   list_files
   # aggregate all fio logs and output a single file for plotting
   # output format is like: "time read_latency write_latency"
-  AVG_FACTOR=$((${PLOT_INTERVAL}/${LOG_INTERVAL}))
   FILECOUNT=`file_count`
+  AVG_FACTOR=$((${PLOT_INTERVAL}/${LOG_INTERVAL}))
+  echo "FILECOUNT=$FILECOUNT, PLOT_INTERVAL=$PLOT_INTERVAL, LOG_INTERVAL=$LOG_INTERVAL"
 
   echo -n "plotting '${TYPE}' chart..."
   cat ${LOG_LIST} | \
@@ -120,8 +122,8 @@ plot_lat() {
           { t=int(\$1/1000/${PLOT_INTERVAL}); arr[t,int(\$3)]+=\$2; T[t] }
       END { for(time in T) printf(\"%d\t%d\t%d\n\",
                               time,
-                              arr[time,0]/${PLOT_INTERVAL},
-                              arr[time,1]/${PLOT_INTERVAL})
+                              arr[time,0]/${AVG_FACTOR}/${FILECOUNT},
+                              arr[time,1]/${AVG_FACTOR}/${FILECOUNT})
           }" | \
   sort -k1 -n > plot_$FN.plotdata
 
@@ -130,8 +132,8 @@ plot_lat() {
     set ylabel '${TYPE} (us)';
     set title '${TITLE} chart' font ',20' ;
     set terminal png size 1800,600; set output 'plot_$FN.png';
-    plot 'plot_$FN.plotdata' using 1:(\$2/${FILECOUNT}/1000) title 'read ${TYPE}' with lines lw 3 lc rgb '#00FF00',
-                          '' using 1:(\$3/${FILECOUNT}/1000) title 'write ${TYPE}' with lines lw 3 lc rgb '#0000FF'
+    plot 'plot_$FN.plotdata' using 1:(\$2/1000) title 'read ${TYPE}' with lines lw 3 lc rgb '#00FF00',
+                          '' using 1:(\$3/1000) title 'write ${TYPE}' with lines lw 3 lc rgb '#0000FF'
    "
    echo "done."
    [[ ${KEEPFILES} == false ]] && rm -f plot_$FN.plotdata
