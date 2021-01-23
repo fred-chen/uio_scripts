@@ -34,11 +34,13 @@ g_startline = 0
 g_endline = 0
 g_dedup_rate = 50
 g_compress_rate = 0
+g_diff = False
 
 def usage(errmsg=""):
     if(errmsg != ""):
         sys.stderr.write("\nERROR: %s\n" % errmsg)
-    print("usage:%s [logname] [-e counter_pattern] [-i] [-g|--graph] [-c|--combine] [-m|--histogram] [-r|--ramplines] [-k] [--startline n] [--endline n]" % sys.argv[0])
+    print("usage:%s [logname] [-e counter_pattern] [-i] [-m|--histogram] [-r|--ramplines] [-k] [--startline n] [--endline n]" % sys.argv[0])
+    print("%s [-g|--graph] [-c|--combine] [-d|--diff]" % (' '.rjust(len("usage:%s [logname]" % (sys.argv[0])))))
     print(
         "\n" "Analyze UniIO counter log files." "\n" 
         "\n" 
@@ -46,7 +48,8 @@ def usage(errmsg=""):
         "  -e pattern:       filter of counter names" "\n"
         "  -i:               ignore case" "\n"
         "  -g, --graph:      plot a scatter graph for counters" "\n"
-        "  -c, --combine:    use with '-g', draw all data onto a single chart"
+        "  -c, --combine:    use with '-g', plot all data onto a single chart"
+        "  -d, --diff:       use with '-g', plot changes between values of a counter"
         "  -m, --histogram:  print histogram (log2 buckets)" "\n"
         "  -r, --ramplines:  ramping lines. to skip first and last few lines of data" "\n"
         "  --startline:      specify a start line, to only analyze lines after that line" "\n"
@@ -111,9 +114,9 @@ def sample_count():
     return int("".join(out))
 
 def handleopts():
-    global g_counter_pattern, g_log_list, g_plot, g_ramplines, g_histogram, g_keepfile, g_startline, g_endline, g_combine
+    global g_counter_pattern, g_log_list, g_plot, g_ramplines, g_histogram, g_keepfile, g_startline, g_endline, g_combine, g_diff
     try:
-        options, args = getopt.gnu_getopt(sys.argv[1:], "he:gr:mc", ["help","graph","ramplines=","histogram","startline=","endline=","combine"])
+        options, args = getopt.gnu_getopt(sys.argv[1:], "he:gr:mcd", ["help","graph","ramplines=","histogram","startline=","endline=","combine","diff"])
     except getopt.GetoptError as err:
         usage(err)
     for o, a in options:
@@ -123,6 +126,8 @@ def handleopts():
             g_plot = True
         if(o in ('-c', '--combine')): 
             g_combine = True
+        if(o in ('-d', '--diff')): 
+            g_diff = True
         if(o in ('-h', '--help')): 
             usage() 
         if(o in ('-r','--ramplines')):
@@ -390,6 +395,9 @@ def plot_counter_combined():
     for counter_name in counter_revalues.keys():
         counter_revalues[counter_name][0] = [ x / factor for x in counter_revalues[counter_name][0] ]
         counter_revalues[counter_name][1] = unit
+        if (g_diff):  # plot difference between counter values
+            counter_revalues[counter_name][0] = [ x - y for x,y in zip(counter_revalues[counter_name][0][1:],counter_revalues[counter_name][0][:-1]) ]
+            counter_revalues[counter_name][0].insert(0,0)
 
     """
       generating plot data file
@@ -398,13 +406,16 @@ def plot_counter_combined():
                        ...
     """
     counter_names = counter_revalues.keys()
-    header = "Minute"
+    header = "Minute"; chart_title = "combined chart"
     for counter_name in counter_names:
         header += " " + counter_name
     if len(counter_names) > 1:
         plotdatafilename = ("%s...%d_counters.combined" % (counter_names[0], len(counter_names))).replace('/','_')
+        chart_title = "combined %s chart" % (" differential" if g_diff else "")
     else:
         plotdatafilename = ("%s.plotdata" % (counter_names[0])).replace('/','_')
+        chart_title = "%s chart" % (counter_names[0] + (" differential" if g_diff else ""))
+
     f = open(plotdatafilename, 'w')
     f.write("%s\n" % (header))
     line=""
@@ -418,15 +429,15 @@ def plot_counter_combined():
                 line += " 0"
         f.write("%s\n" % (line))
     f.close()
-    plotfilename = ("%s.png" % (plotdatafilename)).replace('/','_')
+    plotfilename = ("%s.png" % (plotdatafilename + (".differential" if g_diff else ""))).replace('/','_')
     plotcmd = ( "gnuplot -e \"set grid; set autoscale; set key spacing 2; "
                 "set xlabel 'Time (Minute)'; set ylabel '[%s]'; "
                 "set xtics autofreq; "
-                "set title 'combined chart' font ',20'; "
+                "set title '%s' font ',20'; "
                 "set terminal png size 1200,600; set output '%s'; "
                 "set key autotitle columnheader; "
                 "plot for [i=2:%s] '%s' using 1:i with lines lw 3\"" %
-                (unit, plotfilename, len(counter_names)+1, plotdatafilename)
+                (unit, chart_title, plotfilename, len(counter_names)+1, plotdatafilename)
                 )
     out, err, rt = runcmd(plotcmd)
     if (rt != 0):
@@ -445,12 +456,17 @@ def plot_counter():
     for counter_name in aggregated_array.keys():
         unit = aggregated_array[counter_name][1]
         values = aggregated_array[counter_name][0]; values = values[:]
+        chart_title = counter_name + " chart"
+        if (g_diff):  # plot difference between counter values
+            values = [ x - y for x,y in zip(values[1:],values[:-1]) ]
+            values.insert(0,0)
+            chart_title = counter_name + " differential chart"
 
         min = 9999999999999999999999999.0
         max = -999999999999999999999999.0
         sum = 0
         for v in values:
-            if v < min: min = v 
+            if v < min: min = v
             elif v > max: max = v
             
         unit, factor = suitable_unit(min, unit)
@@ -463,14 +479,14 @@ def plot_counter():
         for v in values_zipped:
             f.write("%s\t%s\t%s\n" % (counter_name, v[0], v[1]))
         f.close()
-        plotfilename = ("%s.png" % (counter_name)).replace('/','_')
+        plotfilename = ("%s.png" % (counter_name + (".differential" if g_diff else ""))).replace('/','_')
         plotcmd = ( "gnuplot -e \"set grid; set autoscale; set key spacing 2; "
                     "set xlabel 'Time (Minute)'; set ylabel '%s [%s]'; "
                     "set xtics autofreq; "
-                    "set title '%s chart' font ',20'; "
+                    "set title '%s' font ',20'; "
                     "set terminal png size 1200,600; set output '%s'; "
                     "plot '%s' using 2:3 title '%s' with lines lw 3 lc rgb '#00FF00'\"" %
-                    (counter_name, unit, counter_name, plotfilename, plotdatafilename, counter_name)
+                    (counter_name, unit, chart_title, plotfilename, plotdatafilename, counter_name)
                   )
         out, err, rt = runcmd(plotcmd)
         if (rt != 0):
