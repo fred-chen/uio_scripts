@@ -216,6 +216,8 @@ def build_data():
     totallinenum = len(lines)
     curlinenum = 0
     for line in lines:
+        curlinenum += 1
+        pct = "%d" % (curlinenum * 100 / totallinenum)
         found = False
         for reg in regCounters:
             if (not reg.search(line)): 
@@ -224,8 +226,6 @@ def build_data():
                 found = True
                 break
         if (not found): continue
-        curlinenum += 1
-        pct = "%d" % (curlinenum * 100 / totallinenum)
         if (curlinenum % 50 == 0): 
             sys.stderr.write("\rbuilding aggregated array ...%s%%(%d/%d)" % (pct, curlinenum, totallinenum))
             sys.stderr.flush()
@@ -411,10 +411,10 @@ def plot_counter_combined():
         header += " " + counter_name
     if len(counter_names) > 1:
         plotdatafilename = ("%s...%d_counters.combined" % (counter_names[0], len(counter_names))).replace('/','_')
-        chart_title = "combined %s chart" % (" differential" if g_diff else "")
+        chart_title = "combined %s chart" % ("differential" if g_diff else "")
     else:
         plotdatafilename = ("%s.plotdata" % (counter_names[0])).replace('/','_')
-        chart_title = "%s chart" % (counter_names[0] + (" differential" if g_diff else ""))
+        chart_title = "%s chart" % (counter_names[0] + ("differential" if g_diff else ""))
 
     f = open(plotdatafilename, 'w')
     f.write("%s\n" % (header))
@@ -429,15 +429,17 @@ def plot_counter_combined():
                 line += " 0"
         f.write("%s\n" % (line))
     f.close()
+    linewidth = 4.0 / len(counter_names); linewidth = 1 if linewidth < 1 else linewidth; linewidth = 3 if linewidth > 3 else linewidth
+    print (linewidth)
     plotfilename = ("%s.png" % (plotdatafilename + (".differential" if g_diff else ""))).replace('/','_')
     plotcmd = ( "gnuplot -e \"set grid; set autoscale; set key spacing 2; "
                 "set xlabel 'Time (Minute)'; set ylabel '[%s]'; "
                 "set xtics autofreq; "
                 "set title '%s' font ',20'; "
-                "set terminal png size 1200,600; set output '%s'; "
+                "set terminal png size 1600,900; set output '%s'; "
                 "set key autotitle columnheader; "
-                "plot for [i=2:%s] '%s' using 1:i with lines lw 3\"" %
-                (unit, chart_title, plotfilename, len(counter_names)+1, plotdatafilename)
+                "plot for [i=2:%s] '%s' using 1:i with lines lw %.1f\"" %
+                (unit, chart_title, plotfilename, len(counter_names)+1, plotdatafilename, linewidth)
                 )
     out, err, rt = runcmd(plotcmd)
     if (rt != 0):
@@ -484,7 +486,7 @@ def plot_counter():
                     "set xlabel 'Time (Minute)'; set ylabel '%s [%s]'; "
                     "set xtics autofreq; "
                     "set title '%s' font ',20'; "
-                    "set terminal png size 1200,600; set output '%s'; "
+                    "set terminal png size 1600,900; set output '%s'; "
                     "plot '%s' using 2:3 title '%s' with lines lw 3 lc rgb '#00FF00'\"" %
                     (counter_name, unit, chart_title, plotfilename, plotdatafilename, counter_name)
                   )
