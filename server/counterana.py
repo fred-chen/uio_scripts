@@ -429,8 +429,7 @@ def plot_counter_combined():
                 line += " 0"
         f.write("%s\n" % (line))
     f.close()
-    linewidth = 4.0 / len(counter_names); linewidth = 1 if linewidth < 1 else linewidth; linewidth = 3 if linewidth > 3 else linewidth
-    print (linewidth)
+    linewidth = 5.0 / len(counter_names); linewidth = 1 if linewidth < 1 else linewidth; linewidth = 3 if linewidth > 3 else linewidth
     plotfilename = ("%s.png" % (plotdatafilename + (".differential" if g_diff else ""))).replace('/','_')
     plotcmd = ( "gnuplot -e \"set grid; set autoscale; set key spacing 2; "
                 "set xlabel 'Time (Minute)'; set ylabel '[%s]'; "
