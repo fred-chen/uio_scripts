@@ -1,3 +1,6 @@
 [submodule "FlameGraph"]
 	path = FlameGraph
 	url = https://github.com/brendangregg/FlameGraph
+[submodule "cctf"]
+	path = cctf
+	url = https://github.com/fred-chen/cctf.git
