@@ -30,7 +30,8 @@ usage() {
   printf "%${len}s %s\n" " " "[-r|--replace rpm_dir]"
   printf "%${len}s %s\n" " " "[-d|--initbackend] [-G dump_size]"
   printf "%${len}s %s\n" " " "[-i|--initarray]"
-  printf "%${len}s %s\n" " " "[-c|--createluns num_luns] [--management_ip ip --iscsi_ip ip --topology ip,ip...]"
+  printf "%${len}s %s\n" " " "[-c|--createluns num_luns]"
+  printf "%${len}s %s\n" " " "[--management_ip ip --iscsi_ip ip --topology ip,ip...]"
   printf "%${len}s %s\n" " " "[-a|--attachluns]"
   echo " -f: force (killing cio_array)"
   echo " -s: stop only"
@@ -114,11 +115,17 @@ create_luns() {
     cioctl iscsi initiator create --name i155 --iqn iqn.1994-05.com.redhat:c031f7521388
     cioctl iscsi initiator create --name i169 --iqn iqn.1994-05.com.redhat:2e515e5f713
     cioctl iscsi initiator create --name i156 --iqn iqn.2020-02.naming.authority:unique-156
-    cioctl iscsi initiatorgroup create --name igall --initiators i155,i156,i169
+    # cioctl iscsi initiatorgroup create --name igall --initiators i155,i156,i169
+    cioctl iscsi initiatorgroup create --name ig155 --initiators i155
+    cioctl iscsi initiatorgroup create --name ig156 --initiators i156
+    cioctl iscsi initiatorgroup create --name ig169 --initiators i169
+
 
     for n in `seq 1 $NUM_LUNS`; do cioctl create lun$n 500G; done
     for n in `seq 1 $NUM_LUNS`; do cioctl iscsi target create --name tgt-$n; done
-    for n in `seq 1 $NUM_LUNS`; do cioctl iscsi mapping create --blockdevice lun$n --target tgt-$n --initiatorgroup igall; done
+    for n in `seq 1 6`; do cioctl iscsi mapping create --blockdevice lun$n --target tgt-$n --initiatorgroup ig155; done
+    for n in `seq 7 12`; do cioctl iscsi mapping create --blockdevice lun$n --target tgt-$n --initiatorgroup ig156; done
+    for n in `seq 13 18`; do cioctl iscsi mapping create --blockdevice lun$n --target tgt-$n --initiatorgroup ig169; done
   }
   cioctl list
 }
