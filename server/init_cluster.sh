@@ -160,7 +160,7 @@ push_topology() {
   is_ciorunning && {
     echo -n "pushing topology ..."
     cioctl topology $TOPOLOGY > /dev/null 2>&1
-    cioctl portal --management_ip $MANAGEMENT_IP --iscsi_ip $ISCSI_IP || { echo "failed 'cioctl portal --management_ip $MANAGEMENT_IP --iscsi_ip $ISCSI_IP'"; return 1; }
+    cioctl portal --management_ip $MANAGEMENT_IP --iscsi_ip $ISCSI_IP > /dev/null 2>&1 || { echo "failed 'cioctl portal --management_ip $MANAGEMENT_IP --iscsi_ip $ISCSI_IP'"; return 1; }
     echo "done."
   } || echo "cio is not running."
 }
@@ -202,8 +202,8 @@ main() {
   [[ $BOOT_ONLY == true ]] && start_array && exit 0
   [[ ${INIT_BACKEND} == true ]] && uninit_array && init_backend
   [[ ${INIT_ARRAY} == true ]] && init_array && start_array
-  [[ ${CREATE_LUNS} == true ]] && push_topology && create_luns
-  [[ ${ATTACH_LUNS} == true ]] && push_topology && attach_luns
+  [[ ${CREATE_LUNS} == true ]] && { push_topology; create_luns; }
+  [[ ${ATTACH_LUNS} == true ]] && { push_topology; attach_luns; }
 }
 
 main "$@"
