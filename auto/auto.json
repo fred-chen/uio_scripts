@@ -1,0 +1,17 @@
+{
+    "client_nodes" : [
+        ["192.168.100.169", "root", "password"],
+        ["192.168.100.155", "root", "password"],
+        ["192.168.100.156", "root", "password"]
+    ],
+    "federation_nodes" : [
+        ["192.168.100.206", "root", "password"],
+        ["192.168.103.248", "root", "password"],
+        ["192.168.101.169", "root", "password"]
+    ],
+    "build_nodes" : [
+        ["192.168.100.120", "root", ".id_rsa"]
+    ],
+    "git_proxy" : "socks5://192.168.100.120:8899"
+}
+
