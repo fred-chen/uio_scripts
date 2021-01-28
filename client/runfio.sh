@@ -80,9 +80,9 @@ main() {
     for nj in $njobs
     do
       client_args=
-      jobstr="$jobtype.qd$qd.njobs$nj" &&
-      [[ ! -z "$duprate" ]] && jobstr="${jobstr}.${duprate}dup" &&
-      [[ ! -z "$comprate" ]] && jobstr="${jobstr}.${comprate}comp" &&
+      jobstr="$jobtype.qd$qd.njobs$nj"
+      [[ ! -z "$duprate" ]] && jobstr="${jobstr}.${duprate}dup"
+      [[ ! -z "$comprate" ]] && jobstr="${jobstr}.${comprate}comp"
       jobstr="${jobstr}.${runtime}s"
 
       joblogdir="$logdir/${jobstr}" && mkdir -p $joblogdir
