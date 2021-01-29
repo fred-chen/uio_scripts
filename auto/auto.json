@@ -9,9 +9,7 @@
         ["192.168.103.248", "root", "password"],
         ["192.168.101.169", "root", "password"]
     ],
-    "build_nodes" : [
-        ["192.168.100.120", "root", ".id_rsa"]
-    ],
+    "build_server" : ["192.168.100.120", "root", ".id_rsa", "/root/fred/.id_rsa"],
     "git_proxy" : "socks5://192.168.100.120:8899"
 }
 

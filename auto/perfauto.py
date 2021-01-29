@@ -61,7 +61,7 @@ def prep_targets():
     # node defs: [ (IP, username, password), ... ]
     client_node_def = g_conf["client_nodes"]
     federation_node_def = g_conf["federation_nodes"]
-    build_node_def = g_conf["build_nodes"]
+    build_node_def = g_conf["build_server"]  # [IP, username, password, git_ssh_identifyfile]
 
     client_targets = []
     for n in client_node_def:
@@ -79,87 +79,84 @@ def prep_targets():
         else:
             return None
 
-    build_servers = []
-    for n in build_node_def:
-        t = gettarget(n[0], username=n[1], password=n[2], svc="ssh", timeout=10)
-        if t:
-            build_servers.append(t)
-        else:
-            return None
+    build_server = None
+    build_server = gettarget(build_node_def[0], username=build_node_def[1], password=build_node_def[2], svc="ssh", timeout=10)
+    if not build_server:
+        return None
 
     # upload uio_scripts to targets
     for t in client_targets + federation_targets:
         if not t.upload("%s" % (g_rootdir), g_runtime_dir):
             return None
 
-    return (client_targets, federation_targets, build_servers)
+    return (client_targets, federation_targets, build_server)
 
 def get_gitcmd():
     git_proxy = "ALL_PROXY="+g_conf["git_proxy"] if g_conf.has_key("git_proxy") else ""
     return "%s git" % (git_proxy) if git_proxy else "git"
 
-def build(build_servers):
+def build(build_server):
     '''
         build uniio rpms
     '''
     global g_runtime_dir
     gitcmd = get_gitcmd()
+    a,b,c,git_ssh_identityfile = g_conf["build_server"]  # [IP, username, password, git_ssh_identityfile]
+    print (git_ssh_identityfile)
     cos = []
-    for n in build_servers:
-        shs = []
-        for i in range(4):  # use 4 shells for parallel compilation
-            sh = n.newshell()
-            shs.append(sh)
-        for sh in shs:
-            sh.exe("export GIT_SSH_COMMAND=\"ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o IdentityFile=/root/fred/.ssh/id_rsa -o ProxyCommand='ssh -q -W %h:%p evidence.orcadt.com'\"")
+    shs = []
+    for i in range(4):  # use 4 shells for parallel compilation
+        sh = build_server.newshell()
+        shs.append(sh)
+    for sh in shs:
+        sh.exe("cd /tmp")
+        sh.exe("export GIT_SSH_COMMAND=\"ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o IdentityFile=%s -o ProxyCommand='ssh -q -W %%h:%%p evidence.orcadt.com'\"" % (git_ssh_identityfile))
+    # git clone all repos in parallel
+    repos = ('uniio', 'uniio-ui', 'sysmgmt', 'nasmgmt')
+    i = 0
+    for repo in repos:
+        cmd = "[[ -e '%s/%s' ]] && { cd %s/%s && %s pull --recurse-submodules; } || { %s clone --recurse-submodules git@github.com:uniio/%s.git %s/%s; }" \
+                % (g_runtime_dir, repo, g_runtime_dir, repo, gitcmd, gitcmd, repo, g_runtime_dir, repo)
+        cos.append( shs[i%4].exe(cmd, wait=False) )
+        i += 1
+    for co in cos:
+        if not co.succ():
+            common.log("failed git command: '%s'" % (co.cmdline), 1)
+            return False
+    # cmake repos
+    sh0 = shs[0]        # shell used for uniio compilation
+    sh1 = shs[1]        # shell used for sysmgmt compilation
+    sh2 = shs[2]        # shell used for nasmgmt compilation
+    sh3 = shs[3]        # shell used for uniio-ui compilation    
+    cos = []
+    co = sh0.exe("cd %s/%s && rm -rf build && mkdir build && cd build && cmake3 -DCMAKE_BUILD_TYPE=Release .." % (g_runtime_dir, "uniio"), wait=False)
+    cos.append(co)
+    co = sh1.exe("cd %s/%s && rm -rf build && mkdir build && cd build && cmake3 -DCMAKE_BUILD_TYPE=Release .." % (g_runtime_dir, "sysmgmt"), wait=False)
+    cos.append(co)
+    co = sh2.exe("cd %s/%s && rm -rf build && mkdir build && cd build && cmake3 -DCMAKE_BUILD_TYPE=Release .." % (g_runtime_dir, "nasmgmt"), wait=False)
+    cos.append(co)
+    co = sh3.exe("cd %s/%s && rm -rf build_debug && mkdir build_debug && cd build_debug && cmake3 .." % (g_runtime_dir, "uniio-ui"), wait=False)
+    cos.append(co)
+    for co in cos:
+        if not co.succ():
+            common.log("failed cmake command: '%s'" % (co.cmdline), 1)
+            return False
 
-        # git clone all repos in parallel
-        repos = ('uniio', 'uniio-ui', 'sysmgmt', 'nasmgmt')
-        i = 0
-        for repo in repos:
-            cmd = "[[ -e '%s/%s' ]] && { cd %s/%s && %s pull --recurse-submodules; } || { %s clone --recurse-submodules git@github.com:uniio/%s.git %s/%s; }" \
-                  % (g_runtime_dir, repo, g_runtime_dir, repo, gitcmd, gitcmd, repo, g_runtime_dir, repo)
-            cos.append( shs[i%4].exe(cmd, wait=False) )
-            i += 1
-        for co in cos:
-            if not co.succ():
-                return False
-        sh0 = shs[0]        # shell used for uniio compilation
-        sh1 = shs[1]        # shell used for sysmgmt compilation
-        sh2 = shs[2]        # shell used for nasmgmt compilation
-        sh3 = shs[3]        # shell used for uniio-ui compilation
-        
-        # cmake repos
-        cos = []
-        co = sh0.exe("cd %s/%s && rm -rf build && mkdir build && cd build && cmake3 -DCMAKE_BUILD_TYPE=Release .." % (g_runtime_dir, "uniio"), wait=False)
-        cos.append(co)
-        co = sh1.exe("cd %s/%s && rm -rf build && mkdir build && cd build && cmake3 -DCMAKE_BUILD_TYPE=Release .." % (g_runtime_dir, "sysmgmt"), wait=False)
-        cos.append(co)
-        co = sh2.exe("cd %s/%s && rm -rf build && mkdir build && cd build && cmake3 -DCMAKE_BUILD_TYPE=Release .." % (g_runtime_dir, "nasmgmt"), wait=False)
-        cos.append(co)
-        co = sh3.exe("cd %s/%s && rm -rf build_debug && mkdir build_debug && cd build_debug && cmake3 .." % (g_runtime_dir, "uniio-ui"), wait=False)
-        cos.append(co)
-        for co in cos:
-            if not co.succ():
-                common.log("failed cmake command:\n%s" % (co.cmdline), 1)
-                return False
-
-        # make repos
-        cos = []
-        co = sh0.exe("cd %s/%s/build && make -j20 package" % (g_runtime_dir, "uniio"), wait=False)
-        cos.append(co)
-        co = sh1.exe("cd %s/%s/build && make -j20 package" % (g_runtime_dir, "sysmgmt"), wait=False)
-        cos.append(co)
-        co = sh2.exe("cd %s/%s/build && make -j20 package" % (g_runtime_dir, "nasmgmt"), wait=False)
-        cos.append(co)
-        co = sh3.exe("cd %s/%s/build_debug && make -j20 package" % (g_runtime_dir, "uniio-ui"), wait=False)
-        cos.append(co)
-        for co in cos:
-            if not co.succ():
-                common.log("failed make command: '%s'" % (co.cmdline), 1)
-                return False
-
-        return True
+    # make repos
+    cos = []
+    co = sh0.exe("cd %s/%s/build && make -j20 package" % (g_runtime_dir, "uniio"), wait=False)
+    cos.append(co)
+    co = sh1.exe("cd %s/%s/build && make -j20 package" % (g_runtime_dir, "sysmgmt"), wait=False)
+    cos.append(co)
+    co = sh2.exe("cd %s/%s/build && make -j20 package" % (g_runtime_dir, "nasmgmt"), wait=False)
+    cos.append(co)
+    co = sh3.exe("cd %s/%s/build_debug && make -j20 package" % (g_runtime_dir, "uniio-ui"), wait=False)
+    cos.append(co)
+    for co in cos:
+        if not co.succ():
+            common.log("failed make command: '%s'" % (co.cmdline), 1)
+            return False
+    return True
 
 
 if __name__ == "__main__":
@@ -169,5 +166,5 @@ if __name__ == "__main__":
     targets = prep_targets()
     if not targets: exit(1)
 
-    client_targets, federation_targets, build_servers = targets
-    if not build(build_servers): exit(1)
+    client_targets, federation_targets, build_server = targets
+    if not build(build_server): exit(1)
