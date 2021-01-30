@@ -132,8 +132,7 @@ create_luns() {
 
 stop_array() {
   is_arrayrunning && {
-    detach_luns || true
-    [[ ${FORCE} == true ]] && { echo -n "force stopping array... "; [[ ! -z "`pidof cio_array`" ]] && kill `pidof cio_array`; } || echo -n "stopping array... "
+    [[ ${FORCE} == true ]] && { echo -n "force stopping array... "; [[ ! -z "`pidof cio_array`" ]] && kill `pidof cio_array`; } || { echo -n "stopping array... "; detach_luns; }
     systemctl stop objmgr  > /dev/null 2>&1 || { echo "failed 'systemctl stop objmgr'."; return 1; }
     systemctl stop objmgr-fab  > /dev/null 2>&1 || { echo "failed 'systemctl stop objmgr-fab'."; return 1; }
     rmmod objblk > /dev/null 2>&1 || true
