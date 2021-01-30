@@ -161,7 +161,43 @@ def build(build_server):
             return False
     return True
 
-def init_cluster(client_targets, federation_targets, build_server):
+def detach_luns(federation_targets):
+    t = federation_targets[0]
+    luns = t.exe("cioctl list | grep GB | awk '{print \$2}' | grep -v '^-'").getlist()
+    for lun in luns:
+        if not t.exe("cioctl detach %s" % (lun)).succ():
+            return False
+    snaps = t.exe("cioctl snapshot list | grep GiB | awk '{print \$2}'").getlist()
+    for snap in snaps:
+        if not t.exe("cioctl detach %s" % (snap)).succ():
+            return False
+    return True
+
+def attach_luns(federation_targets):
+    t = federation_targets[0]
+    luns = t.exe("cioctl list | grep GB | awk '{print \$2}' | grep -v '^-'").getlist()
+    for lun in luns:
+        if not t.exe("cioctl attach %s" % (lun)).succ():
+            return False
+    snaps = t.exe("cioctl snapshot list | grep GiB | awk '{print \$2}'").getlist()
+    for snap in snaps:
+        if not t.exe("cioctl attach %s" % (snap)).succ():
+            return False
+    return True
+
+def shutdown_cluster(federation_targets, force=True):
+    # shutdown cluster
+    cos = []
+    for t in federation_targets:
+        cmd  = "%s/uio_scripts/server/init_cluster.sh %s -s" % (g_runtime_dir, "-f" if force else "")
+        cos.append(t.exe(cmd, wait=False))
+    for co in cos:
+        if not co.succ():
+            common.log("failed when shutting down uniio.")
+            return False
+    return True
+
+def replace_rpm(federation_targets, build_server, force=True):
     # download from build server and upload rpm packages to federation nodes:
     me.call("rm -rf /tmp/rpms && mkdir /tmp/rpms", shell=True)
     if not build_server.download("/tmp/rpms/", "%s/uniio/build/object-array-*.rpm" % (g_runtime_dir)):                    # download uniio rpms
@@ -177,8 +213,7 @@ def init_cluster(client_targets, federation_targets, build_server):
         t.exe("mkdir -p /tmp/rpms")
         if not t.upload("/tmp/rpms/*.rpm", "/tmp/rpms/"):
             return False
-    
-    # shutdown cluster and replace rpms
+
     cos = []
     for t in federation_targets:
         cmd  = "%s/uio_scripts/server/init_cluster.sh -f --replace=/tmp/rpms" % (g_runtime_dir)
@@ -187,6 +222,11 @@ def init_cluster(client_targets, federation_targets, build_server):
         if not co.succ():
             common.log("failed when shutting down uniio.")
             return False
+
+def init_cluster(federation_targets, build_server):
+    # shutdown cluster and replace rpms
+    if not replace_rpm(federation_targets, build_server):
+        return False
 
     # init backend and restart uniio
     cos = []
@@ -200,7 +240,8 @@ def init_cluster(client_targets, federation_targets, build_server):
 
     if not push_topology(federation_targets):
         return False
-    
+    if not create_luns(client_targets, federation_targets):
+        return False
     return True
 
 def push_topology(federation_targets):
@@ -245,7 +286,6 @@ def create_luns(client_targets, federation_targets):
     return True
 
 def clear_luns(federation_targets):
-    cos = []
     t = federation_targets[0]
     mappings = t.exe("cioctl iscsi mapping list | grep iqn | awk '{print \$2}'").getlist()
     for mapping in mappings:
@@ -322,11 +362,13 @@ if __name__ == "__main__":
     client_targets, federation_targets, build_server = targets
     # if not build(build_server): exit(1)
 
-    # if not init_cluster(*targets): exit(1)
+    # if not init_cluster(federation_targets, build_server): exit(1)
 
     # push_topology(federation_targets)
     # create_luns(client_targets, federation_targets)
-    # iscsi_out(client_targets)
+    iscsi_out(client_targets)
     # iscsi_in(client_targets)
     # clear_luns(federation_targets)
-    fio_server(client_targets)
+    detach_luns(federation_targets)
+    # attach_luns(federation_targets)
+    # fio_server(client_targets)
