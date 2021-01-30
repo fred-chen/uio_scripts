@@ -48,7 +48,7 @@ usage() {
   exit 1
 }
 handleopts() {
-    OPTS=`getopt -o r::dsfhbic::G:a -l replace:,initbackend,stoponly,initarray,createluns::,management_ip:,iscsi_ip:,topology:attachluns -- "$@"`
+    OPTS=`getopt -o r::dsfhbic::G:a -l replace::,initbackend,stoponly,initarray,createluns::,management_ip:,iscsi_ip:,topology:attachluns -- "$@"`
     [[ $? -eq 0 ]] || usage
 
     eval set -- "$OPTS"
@@ -104,7 +104,7 @@ delete_luns() {
     for n in `cioctl iscsi mapping list | grep iqn | awk '{print $2}'`; do cioctl iscsi mapping delete --blockdevice $n --yes-i-really-really-mean-it; done
     for n in `cioctl iscsi target list | grep iqn | awk '{print $2}'`; do cioctl iscsi target delete --name $n --yes-i-really-really-mean-it; done
     for n in `cioctl snapshot list | grep GiB | awk '{print $2}'`; do cioctl detach $n; done
-    for n in `cioctl list | grep GiB | awk '{print $2}' | grep -v '^-'`; do cioctl delete $n; done
+    for n in `cioctl list | grep GB | awk '{print $2}' | grep -v '^-'`; do cioctl delete $n; done
     for n in `cioctl iscsi initiatorgroup list | grep -E '.+-[0-9]+-' | awk '{print $2}'` ; do cioctl iscsi initiatorgroup delete --name $n --yes-i-really-really-mean-it; done
     for n in `cioctl iscsi initiator list | grep -E '.+-[0-9]+-' | awk '{print $2}'` ; do cioctl iscsi initiator delete --name $n --yes-i-really-really-mean-it; done;
   }
@@ -196,13 +196,15 @@ init_array() {
 main() {
   handleopts "$@"
   echo "INIT_BACKEND=$INIT_BACKEND", "REPLACE=$REPLACE", "RPMDIR=$RPMDIR", "FORCE=$FORCE", "STOP_ONLY=$STOP_ONLY", "BOOT_ONLY=$BOOT_ONLY"
-  [[ $STOP_ONLY == true ]] && stop_array && exit 0
-  [[ $REPLACE == true ]] && stop_array && replace_rpm
-  [[ $BOOT_ONLY == true ]] && start_array && exit 0
+  [[ ${STOP_ONLY} == true ]] && stop_array && exit 0
+  [[ ${REPLACE} == true ]] && stop_array && replace_rpm
+  [[ ${BOOT_ONLY} == true ]] && start_array && exit 0
   [[ ${INIT_BACKEND} == true ]] && uninit_array && init_backend
   [[ ${INIT_ARRAY} == true ]] && init_array && start_array
   [[ ${CREATE_LUNS} == true ]] && { push_topology; create_luns; }
   [[ ${ATTACH_LUNS} == true ]] && { push_topology; attach_luns; }
+
+  return 0
 }
 
 main "$@"

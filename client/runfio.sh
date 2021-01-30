@@ -23,7 +23,7 @@ function usage() {
   }
   len=$(expr length "usage: `basename $0`")
   printf "usage: `basename $0` <job_type> [-j|--jobs job_str] [-q|--qdepth qd_str]\n"
-  printf "%${len}s            [-t|--time secs] [-d|--devices dev_str] [-c|--clients client_str]\n" " "
+  printf "%${len}s            [-t|--time secs] [-c|--clients client_str]\n" " "
   printf "%${len}s            [--duprate pct] [--comprate pct]\n" " "
   echo
   echo "options:"

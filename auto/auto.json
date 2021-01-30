@@ -10,6 +10,11 @@
         ["192.168.101.169", "root", "password"]
     ],
     "build_server" : ["192.168.100.120", "root", ".id_rsa", "/root/fred/.id_rsa"],
-    "git_proxy" : "socks5://192.168.100.120:8899"
+    "git_proxy" : "socks5://192.168.100.120:8899",
+    "num_luns" : 18,
+    "lunsize_G" : 1000,
+    "topology" : "192.168.101.169,192.168.103.248,192.168.100.206",
+    "management_ip" : "192.168.103.253",
+    "iscsi_ip" : "192.168.60.253"
 }
 
