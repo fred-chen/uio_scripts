@@ -457,6 +457,8 @@ def fio_gen_jobs(client_targets):
         for jobfile_name in jobfile_names:
             if not t.upload( jobfile_name, fio_job_dir ):
                 return None, None
+    for jobfile_name in jobfile_names:
+        me.call("rm -f %s" % (jobfile_name))
     return jobdesc, fio_job_dir
 
 def fio_run(client_targets):
@@ -488,10 +490,10 @@ def fio_run(client_targets):
     nj_str = g_conf["runfio_jobs"] if g_conf.has_key("runfio_jobs") else str(njobs)
     qd_str = g_conf["runfio_qdepth"] if g_conf.has_key("runfio_qdepth") else str(qdepth)
     runtime_str = g_conf["fio_runtime"] if g_conf.has_key("fio_runtime") else "60"
-    cmd = "%s/uio_scripts/client/runfio.sh --jobs '%s' --qdepth '%s' --clients %s --profiledir %s -t %s %s" % (g_runtime_dir, nj_str, qd_str, clients, fio_job_dir, runtime_str, jobdesc)
+    cmd = "%s/uio_scripts/client/runfio.sh --jobs '%s' --qdepth '%s' --clients %s --profiledir %s -t %s %s | tee %s/fiorunning.log" % (g_runtime_dir, nj_str, qd_str, clients, fio_job_dir, runtime_str, jobdesc, g_runtime_dir)
 
-    common.log("long task running on '%s': %s" % (fio_driver, cmd))
     co = sh_fio.exe(cmd, wait=False)
+    common.log("long task running on '%s': %s" % (fio_driver, cmd))
 
     return (jobdesc, fio_job_dir, co, fio_driver)
 
@@ -532,7 +534,7 @@ def counter_log(jobdesc, federation_targets):
     
     # collect cpu data with 'server/collect_cpu.sh' for one time at 10th second
     # if duration is more than 1 hour, proceed cpu data collection every hour
-    every = 80
+    every = 3600
     num_collects = dur / every
     for t in federation_targets:
         sh = t.newshell()   # get a new shell for cpu collection, so no serilization with the counter shell
