@@ -5,15 +5,14 @@ automatic performance evaluation for uniio
 
 @author: fred
 '''
-import sys, os, json, getopt, subprocess
+import sys, os, json, getopt, random
 sys.path.append('%s/../cctf' % (os.path.dirname(os.path.realpath(__file__))))
 from cctf import gettarget, common, me
 
 g_curdir = os.path.abspath(os.getcwd())
-g_conf = {}
+g_conf = None
 g_rootdir = os.path.abspath(os.path.join(os.path.dirname(sys.argv[0]), os.pardir))
 g_runtime_dir = '/tmp'
-g_script_dir = g_runtime_dir + "/uio_scripts"
 
 def usage(errmsg=""):
     if(errmsg != ""):
@@ -22,7 +21,7 @@ def usage(errmsg=""):
     exit(1)
 
 def handleopts():
-    global g_conf
+    global g_conf, g_runtime_dir
     conf_file = "%s/auto.json" % (os.path.dirname(os.path.realpath(__file__)))
     try:
         options, args = getopt.gnu_getopt(sys.argv[1:], "hc:", ["help", "configfile="])
@@ -48,6 +47,7 @@ def handleopts():
         common.log("can not parse configuration file '%s'." % conf_file, 1)
         return None
     g_conf = conf
+    g_runtime_dir = conf["runtime_dir"]
     return conf
 
 def prep_targets():
@@ -85,6 +85,8 @@ def prep_targets():
 
     # upload uio_scripts to targets
     for t in client_targets + federation_targets:
+        if not t.exe("mkdir -p %s" % (g_runtime_dir)):
+            return None
         if not t.upload("%s" % (g_rootdir), g_runtime_dir):
             return None
 
@@ -165,11 +167,11 @@ def detach_luns(federation_targets):
     t = federation_targets[0]
     luns = t.exe("cioctl list | grep GB | awk '{print \$2}' | grep -v '^-'").getlist()
     for lun in luns:
-        if not t.exe("cioctl detach %s" % (lun)).succ():
+        if not t.exe("cioctl detach --ignore_session_check %s" % (lun)).succ():
             return False
     snaps = t.exe("cioctl snapshot list | grep GiB | awk '{print \$2}'").getlist()
     for snap in snaps:
-        if not t.exe("cioctl detach %s" % (snap)).succ():
+        if not t.exe("cioctl detach --ignore_session_check %s" % (snap)).succ():
             return False
     return True
 
@@ -313,7 +315,6 @@ def clear_luns(federation_targets):
             return False
     return True
 
-
 def iscsi_out(client_targets):
     cos = []
     iscsi_ip = g_conf["iscsi_ip"]
@@ -352,6 +353,146 @@ def fio_server(client_targets):
             return False    
     return True
 
+def fio_build_job_contents(client_target):
+    """
+        generate fio job file contents for 'runfio.sh' for a given client
+        return: jobdesc, fio_job_content
+            jobdesc string to summarize the job ( may be used as prefix of job filename  )
+            content string for the fio job definition file
+    """
+    fio_job_content  = "[global]"
+    fio_job_content += "\n" "write_bw_log=xxx"   # later xxx will be replaced by runfio.sh
+    fio_job_content += "\n" "write_lat_log=xxx"  # later xxx will be replaced by runfio.sh
+    fio_job_content += "\n" "write_iops_log=xxx" # later xxx will be replaced by runfio.sh
+    fio_job_content += "\n" "log_avg_msec=10000" 
+    fio_job_content += "\n" "ioengine=libaio" 
+    fio_job_content += "\n" "direct=1" 
+    fio_job_content += "\n" "sync=1" 
+    fio_job_content += "\n" "bs=4k" 
+    dist = g_conf["fio_random_distribution"] if g_conf.has_key("fio_random_distribution") else "random"
+    fio_job_content += "\n" "random_distribution=%s" % (dist)
+    
+    duprate = g_conf["fio_dedupe_percentage"] if g_conf.has_key("fio_dedupe_percentage") else "80"
+    if duprate != 0:
+        fio_job_content += "\n" "dedupe_percentage=%d" % (duprate) 
+    else:   # no deduplicable data, small changes to every fio buffer
+        fio_job_content += "\n" "scramble_buffers=1"
+    
+    comprate = g_conf["fio_buffer_compress_percentage"] if g_conf.has_key("fio_buffer_compress_percentage") else "60"
+    if comprate != 0:
+        fio_job_content += "\n" "buffer_compress_percentage=%d" % (comprate)
+    else:   # no compressible data, refill every fio buffer
+        fio_job_content += "\n" "refill_buffers=1"
+    
+    fio_job_content += "\n" "group_reporting=1"
+    runtime = g_conf["fio_runtime"] if g_conf.has_key("fio_runtime") else 60
+    fio_job_content += "\n" "runtime=%d" % (runtime) 
+    fio_job_content += "\n" "time_based=1" 
+    fio_job_content += "\n" "ramp_time=60"
+
+    # numjobs and iodepth may be replaced by 'runfio.sh'
+    njobs = g_conf["fio_numjobs"] if g_conf.has_key("fio_numjobs") else 1
+    fio_job_content += "\n" "numjobs=%d" % (njobs) 
+    qdepth = g_conf["fio_iodepth"] if g_conf.has_key("fio_iodepth") else 3
+    fio_job_content += "\n" "iodepth=%d" % (qdepth) 
+    fio_job_content += "\n" "" 
+
+    rw = g_conf["fio_rw"] if g_conf.has_key("fio_rw") else "randrw"
+    jobdesc = "%s.qd%d.njobs%d.%ddup.%dcomp.%s_dist.%dsec" % \
+              (rw, qdepth, njobs, duprate, comprate, dist, runtime)
+
+    # get UNIIO iscsi luns on client
+    luns = {}    # { addr1 : [dev1, dev2, ...], ... }
+    cmd = "lsblk -p -o name,vendor | grep UNIIO | awk '{print \$1}'"
+    uio_devs = client_target.exe(cmd).getlist()
+
+    for dev in uio_devs:
+        fio_job_content += "\n" ""
+        if rw[:6] == "sepjob":  # no constraint for read and write, will define separate jobs for read and write
+            if rw[7:] == "rw":  # separated jobs for sequential read and write
+                fio_job_content += "\n" "[%s_read]" % (dev)
+                fio_job_content += "\n" "rw=read"
+                fio_job_content += "\n" "filename=%s" % (dev)
+                fio_job_content += "\n" "[%s_write]" % (dev)
+                fio_job_content += "\n" "rw=write"
+                fio_job_content += "\n" "filename=%s" % (dev)
+            else:  # separated jobs for random read and write
+                fio_job_content += "\n" "[%s_read]" % (dev)
+                fio_job_content += "\n" "rw=randread"
+                fio_job_content += "\n" "filename=%s" % (dev)
+                fio_job_content += "\n" "[%s_write]" % (dev)
+                fio_job_content += "\n" "rw=randwrite"
+                fio_job_content += "\n" "filename=%s" % (dev)
+        else:   # actual fio supported rw types
+            fio_job_content += "\n" "[%s]" % (dev)
+            fio_job_content += "\n" "filename=%s" % (dev)
+            fio_job_content += "\n" "rw=%s" % (rw)
+            if rw.strip().find('rw') >= 0:  # mixed read/write
+                fio_job_content += "\n" "rwmixread=%d" % (g_conf["fio_rwmixread"] if g_conf.has_key("fio_rwmixread") else 80) 
+                fio_job_content += "\n" "rwmixwrite=%d" % (g_conf["fio_rwmixwrite"] if g_conf.has_key("fio_rwmixwrite") else 20) 
+
+    return jobdesc, fio_job_content
+
+
+def fio_gen_jobs(client_targets):
+    """
+        generate fio job files for 'runfio.sh' then upload to clients
+        return: directory that contains fio job files
+    """
+    jobdesc = None; jobfile_names = []
+    # write fio job files for each client
+    for t in client_targets:
+        jobdesc, fio_jobfile_content = fio_build_job_contents(t)
+        jobfile_name = "%s_%s.fio" % (jobdesc, t.address)
+        f = open(jobfile_name, "w")
+        f.write(fio_jobfile_content)
+        f.close()
+        jobfile_names.append(jobfile_name)
+    
+    # upload fio job files to all clients
+    fio_job_dir = g_runtime_dir + "/fiorun/%s" % (jobdesc)
+    for t in client_targets:
+        t.exe( "mkdir -p %s" % (fio_job_dir) )
+        for jobfile_name in jobfile_names:
+            if not t.upload( jobfile_name, fio_job_dir ):
+                return None, None
+    return jobdesc, fio_job_dir
+
+def fio_run(client_targets):
+    '''
+        run fio job on one of the client nodes
+        return: (jobdesc, fio_job_dir, cmdobj)
+            cmdobj: a command obj that traces the fio job
+    '''
+    jobdesc, fio_job_dir = fio_gen_jobs(client_targets)
+    if not jobdesc:
+        return None
+    if not fio_server(client_targets):
+        return None
+    
+    fio_output_dir = "%s/fio_output" % (fio_job_dir) # the directory where fio saves *.json files to
+    fio_log_dir = "%s/fio_log" % (fio_job_dir)       # the directory where fio saves the bandwidth, iops, latency logs
+    
+    # choose one of the clients as the fio driver
+    idx = random.randrange(1,1024) % len(client_targets)
+    fio_driver = client_targets[idx]
+
+    # run 'client/runfio.sh' on the fio driver node
+    sh_fio = fio_driver.newshell()
+    if not sh_fio.exe("cd %s" % (fio_job_dir)):
+        return None
+    clients=""
+    for t in client_targets:
+        clients += "%s," % (t.address)  # the tailing ',' will be handled by 'runfio.sh'
+    nj = g_conf["runfio_nj"] if g_conf.has_key("runfio_nj") else "1"
+    qd = g_conf["runfio_qd"] if g_conf.has_key("runfio_qd") else "3"
+    cmd = "%s/uio_scripts/client/runfio.sh --jobs '%s' --qdepth '%s' --clients %s --profiledir %s" % (g_runtime_dir, nj, qd, clients, fio_job_dir)
+    print (cmd)
+    # co = sh_fio.exe()
+
+    return (jobdesc, fio_job_dir, cmd)
+
+
 if __name__ == "__main__":
     conf = handleopts()
     if not conf: exit(1)
@@ -366,9 +507,11 @@ if __name__ == "__main__":
 
     # push_topology(federation_targets)
     # create_luns(client_targets, federation_targets)
-    iscsi_out(client_targets)
-    # iscsi_in(client_targets)
     # clear_luns(federation_targets)
-    detach_luns(federation_targets)
+    # detach_luns(federation_targets)
     # attach_luns(federation_targets)
     # fio_server(client_targets)
+
+    # iscsi_out(client_targets)
+    # iscsi_in(client_targets)
+    fio_run(client_targets)

@@ -1,4 +1,5 @@
 {
+    "runtime_dir" : "/tmp/uio",
     "client_nodes" : [
         ["192.168.100.169", "root", "password"],
         ["192.168.100.155", "root", "password"],
@@ -15,6 +16,27 @@
     "lunsize_G" : 1000,
     "topology" : "192.168.101.169,192.168.103.248,192.168.100.206",
     "management_ip" : "192.168.103.253",
-    "iscsi_ip" : "192.168.60.253"
+    "iscsi_ip" : "192.168.60.253",
+    "fio_iodepth" : 3,
+    "fio_numjobs" : 1,
+    "fio_dedupe_percentage" : 80,
+    "fio_buffer_compress_percentage" : 60,
+    
+    "fio_random_distribution" : "random",
+    "fio_random_distribution can be any fio supported distributions: [random, zipf:0.96, pareto:ratio, ..]" : "just comments",
+    
+    "fio_runtime" : 3600,
+    
+    "fio_rw" : "write",
+    "fio_rw can be 'sepjob[_fio-supported-rw]' or any fio supported rw types" : "just comments",
+    "fio_rw 'sepjob_xxx' means use different jobs for read and write in mixed workload" : "just comments",
+    "fio_rw example: 'sepjob', 'sepjob_randrw', 'sepjob_rw' " : "just comments",
+    
+    "fio_rwmixread" : 80,
+    "fio_rwmixwrite" : 20,
+
+    "runfio_nj" : "1,2",
+    "runfio_qd" : "3,4",
+    "runfio_xxx is arguments for 'runfio.sh', e.g. -nj -qd" : "just comments"
 }
 

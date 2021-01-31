@@ -5,9 +5,9 @@
 # Maintainer: Fred Chen
 
 clients="192.168.100.155,192.168.100.156,192.168.100.169" # fio clients running "fio --server --daemonize"
-outputdir=./fio_output   # the directory where fio saves *.json files to
-logdir=./fio_log         # the directory where fio saves the bandwidth, iops, latency logs
-profiledir=./fio_jobfile # the directory where fio find its job files
+outputdir=fio_output     # the directory where fio saves *.json files to
+logdir=fio_log           # the directory where fio saves the bandwidth, iops, latency logs
+profiledir=./            # the directory where fio find its job files
 qds="1"                  # iodepths fio will use in job files. multiple q depth can be specified: '1,2,3'
 njobs="1"                # numjobs fio will use in job files. multiple numjobs can be specified: '1,2,3'
 runtime=600              # the time that fio will run
@@ -22,12 +22,13 @@ function usage() {
     echo
   }
   len=$(expr length "usage: `basename $0`")
-  printf "usage: `basename $0` <job_type> [-j|--jobs job_str] [-q|--qdepth qd_str]\n"
+  printf "usage: `basename $0` <job_type> [-p|--profiledir dir] [-j|--jobs job_str] [-q|--qdepth qd_str]\n"
   printf "%${len}s            [-t|--time secs] [-c|--clients client_str]\n" " "
   printf "%${len}s            [--duprate pct] [--comprate pct]\n" " "
   echo
   echo "options:"
   echo "job_type:        job type, a prefix of fio job files"
+  echo "  -p | --profiledir: specify the dir that contains fio job files"
   echo "  -j | --jobs:   specify numjobs fio will use in job files. multiple numjobs can be specified: '1,2,3'"
   echo "  -q | --qdepth: specify iodepth fio will use in job files. multiple q depth can be specified: '1,2,3'"
   echo "  -t | --time:   specify runtime in fio profile"
@@ -38,16 +39,17 @@ function usage() {
 }
 
 handleopts() {
-  OPTS=`getopt -o hc:q:t:j:d: -l help,clients:,jobs:,qdepth:,time:,devices:,duprate:,comprate: -- "$@"`
+  OPTS=`getopt -o hc:q:t:j:d:p: -l help,clients:,jobs:,qdepth:,time:,devices:,duprate:,comprate:profiledir: -- "$@"`
   [[ $? -eq 0 ]] || usage
   eval set -- "$OPTS"
   while true ; do
       case "$1" in
-          -c | --client_str) client_str=$2; shift 2;;
+          -c | --clients) clients=$2; shift 2;;
           -j | --jobs) njobs=$2; shift 2;;
           -q | --qdepth) qds=$2; shift 2;;
           -t | --time) runtime=$2; shift 2;;
           -d | --devices) devlist=$2; shift 2;;
+          -p | --profiledir) profiledir=$2; shift 2;;
           -h | --help) shift 1; usage;;
           --duprate) duprate=$2; shift 2;;
           --comprate) comprate=$2; shift 2;;
@@ -58,17 +60,9 @@ handleopts() {
   njobs=`echo $njobs|sed 's/,/ /g'`
   qds=`echo $qds|sed 's/,/ /g'`
   clients=`echo $clients|sed 's/,/ /g'`
-  devs=$devlist && devlist=
-  for n in `echo $devs|sed 's/,/ /g'`
-  do
-    devlist="$devlist /dev/$n"
-  done
-
-  echo "njobs=$njobs"
-  echo "qds=$qds"
-  echo "clients=$clients"
-  echo "time=$runtime"
-  echo "jobtype=$jobtype"
+  outputdir="${profiledir}/${outputdir}"
+  logdir="${profiledir}/${logdir}"
+  echo "njobs=$njobs" "qds=$qds" "clients=$clients" "time=$runtime" "jobtype=$jobtype"
 }
 
 main() {
