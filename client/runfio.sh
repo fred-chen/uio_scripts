@@ -39,7 +39,7 @@ function usage() {
 }
 
 handleopts() {
-  OPTS=`getopt -o hc:q:t:j:d:p: -l help,clients:,jobs:,qdepth:,time:,devices:,duprate:,comprate:profiledir: -- "$@"`
+  OPTS=`getopt -o hc:q:t:j:d:p: -l help,clients:,jobs:,qdepth:,time:,devices:,duprate:,comprate:,profiledir: -- "$@"`
   [[ $? -eq 0 ]] || usage
   eval set -- "$OPTS"
   while true ; do
@@ -77,7 +77,7 @@ main() {
       jobstr="$jobtype.qd$qd.njobs$nj"
       [[ ! -z "$duprate" ]] && jobstr="${jobstr}.${duprate}dup"
       [[ ! -z "$comprate" ]] && jobstr="${jobstr}.${comprate}comp"
-      jobstr="${jobstr}.${runtime}s"
+      [[ ! -z "$runtime" ]] && jobstr="${jobstr}.${runtime}s"
 
       joblogdir="$logdir/${jobstr}" && mkdir -p $joblogdir
       jsonfn=$outputdir/$jobstr.json
@@ -105,7 +105,7 @@ main() {
       echo "done"
     done
   done
-
+  return 0
 }
 
 main "$@"

@@ -5,7 +5,7 @@ automatic performance evaluation for uniio
 
 @author: fred
 '''
-import sys, os, json, getopt, random
+import sys, os, json, getopt, random, re, time
 sys.path.append('%s/../cctf' % (os.path.dirname(os.path.realpath(__file__))))
 from cctf import gettarget, common, me
 
@@ -388,21 +388,22 @@ def fio_build_job_contents(client_target):
     runtime = g_conf["fio_runtime"] if g_conf.has_key("fio_runtime") else 60
     fio_job_content += "\n" "runtime=%d" % (runtime) 
     fio_job_content += "\n" "time_based=1" 
-    fio_job_content += "\n" "ramp_time=60"
+    fio_job_content += "\n" "ramp_time=%d " % (g_conf["fio_ramp_time"] if g_conf.has_key("fio_ramp_time") else 60)
 
     # numjobs and iodepth may be replaced by 'runfio.sh'
     njobs = g_conf["fio_numjobs"] if g_conf.has_key("fio_numjobs") else 1
     fio_job_content += "\n" "numjobs=%d" % (njobs) 
     qdepth = g_conf["fio_iodepth"] if g_conf.has_key("fio_iodepth") else 3
     fio_job_content += "\n" "iodepth=%d" % (qdepth) 
-    fio_job_content += "\n" "" 
+    fio_job_content += "\n" ""
 
     rw = g_conf["fio_rw"] if g_conf.has_key("fio_rw") else "randrw"
-    jobdesc = "%s.qd%d.njobs%d.%ddup.%dcomp.%s_dist.%dsec" % \
-              (rw, qdepth, njobs, duprate, comprate, dist, runtime)
+    nj_str = g_conf["runfio_jobs"] if g_conf.has_key("runfio_jobs") else str(njobs)
+    qd_str = g_conf["runfio_qdepth"] if g_conf.has_key("runfio_qdepth") else str(qdepth)
+    jobdesc = "%s.qd%s.njobs%s.%ddup.%dcomp.%s_dist.%dsec" % \
+              (rw, re.sub(',| ', '-', qd_str.strip()), re.sub(',| ', '-', nj_str.strip()), duprate, comprate, dist, runtime)
 
     # get UNIIO iscsi luns on client
-    luns = {}    # { addr1 : [dev1, dev2, ...], ... }
     cmd = "lsblk -p -o name,vendor | grep UNIIO | awk '{print \$1}'"
     uio_devs = client_target.exe(cmd).getlist()
 
@@ -461,17 +462,15 @@ def fio_gen_jobs(client_targets):
 def fio_run(client_targets):
     '''
         run fio job on one of the client nodes
-        return: (jobdesc, fio_job_dir, cmdobj)
-            cmdobj: a command obj that traces the fio job
+        return: (jobdesc, fio_job_dir, cmdobj, fio_driver)
+            cmdobj: command objs that traces the fio jobs
+            fio_driver: the target that fio runs on
     '''
     jobdesc, fio_job_dir = fio_gen_jobs(client_targets)
     if not jobdesc:
         return None
     if not fio_server(client_targets):
         return None
-    
-    fio_output_dir = "%s/fio_output" % (fio_job_dir) # the directory where fio saves *.json files to
-    fio_log_dir = "%s/fio_log" % (fio_job_dir)       # the directory where fio saves the bandwidth, iops, latency logs
     
     # choose one of the clients as the fio driver
     idx = random.randrange(1,1024) % len(client_targets)
@@ -484,14 +483,110 @@ def fio_run(client_targets):
     clients=""
     for t in client_targets:
         clients += "%s," % (t.address)  # the tailing ',' will be handled by 'runfio.sh'
-    nj = g_conf["runfio_nj"] if g_conf.has_key("runfio_nj") else "1"
-    qd = g_conf["runfio_qd"] if g_conf.has_key("runfio_qd") else "3"
-    cmd = "%s/uio_scripts/client/runfio.sh --jobs '%s' --qdepth '%s' --clients %s --profiledir %s" % (g_runtime_dir, nj, qd, clients, fio_job_dir)
-    print (cmd)
-    # co = sh_fio.exe()
+    njobs = g_conf["fio_numjobs"] if g_conf.has_key("fio_numjobs") else 1
+    qdepth = g_conf["fio_iodepth"] if g_conf.has_key("fio_iodepth") else 3
+    nj_str = g_conf["runfio_jobs"] if g_conf.has_key("runfio_jobs") else str(njobs)
+    qd_str = g_conf["runfio_qdepth"] if g_conf.has_key("runfio_qdepth") else str(qdepth)
+    runtime_str = g_conf["fio_runtime"] if g_conf.has_key("fio_runtime") else "60"
+    cmd = "%s/uio_scripts/client/runfio.sh --jobs '%s' --qdepth '%s' --clients %s --profiledir %s -t %s %s" % (g_runtime_dir, nj_str, qd_str, clients, fio_job_dir, runtime_str, jobdesc)
 
-    return (jobdesc, fio_job_dir, cmd)
+    common.log("long task running on '%s': %s" % (fio_driver, cmd))
+    co = sh_fio.exe(cmd, wait=False)
 
+    return (jobdesc, fio_job_dir, co, fio_driver)
+
+def counter_log(jobdesc, federation_targets):
+    '''
+        start logging counter values using 'server/counters.sh' on federation nodes
+        collect cpu data into flame graphs every 1 hour ( if applicable )
+        return: counter_log_dir, counter_log_path, cmdobjs
+            counter_log_dir:  the directory that contains counter logs and svg files
+            counter_log_path: counter log location on each node
+            cmdobj: the command objects tracking the counters.sh command
+    '''
+
+    # numjobs and iodepth may be replaced by 'runfio.sh'
+    njobs = g_conf["fio_numjobs"] if g_conf.has_key("fio_numjobs") else 1
+    qdepth = g_conf["fio_iodepth"] if g_conf.has_key("fio_iodepth") else 3
+    nj_str = g_conf["runfio_jobs"] if g_conf.has_key("runfio_jobs") else str(njobs)
+    qd_str = g_conf["runfio_qdepth"] if g_conf.has_key("runfio_qdepth") else str(qdepth)
+    nj_str = re.sub('\s+', ',', nj_str.strip())
+    qd_str = re.sub('\s+', ',', qd_str.strip())
+    runtime = g_conf["fio_runtime"] if g_conf.has_key("fio_runtime") else 60
+
+    dur = len(nj_str.split(',')) * len(qd_str.split(',')) * runtime
+    cmdobjs = []
+
+    start = time.time()
+    # collect counter logs
+    counter_log_dir = "%s/counter_logs" % (g_runtime_dir)
+    counter_log_path = "%s/%s.%ddur.log" % (counter_log_dir,jobdesc, dur)
+    for t in federation_targets:
+        t.exe("mkdir -p %s" % (counter_log_dir))
+        sh = t.newshell()
+        if not sh:
+            return None, None, None
+        cmd = "%s/uio_scripts/server/counters.sh %d > %s" % (g_runtime_dir, dur, counter_log_path)
+        cmdobjs.append(sh.exe(cmd, wait=False))
+        common.log("long task running on '%s': %s" % (t, cmd))
+    
+    # collect cpu data with 'server/collect_cpu.sh' for one time at 10th second
+    # if duration is more than 1 hour, proceed cpu data collection every hour
+    every = 80
+    num_collects = dur / every
+    for t in federation_targets:
+        sh = t.newshell()   # get a new shell for cpu collection, so no serilization with the counter shell
+        if not sh:
+            return None, None, None
+        # stacking commands in the same shell, it will serialize all commands
+        cmdobjs.append(sh.exe("cd %s" % (counter_log_dir), wait=False))
+        for elapse in [10] + [ every * (i+1) for i in range(num_collects) ]:
+            prefix = "when%ds.%s" % (elapse, jobdesc)
+            cmdobjs.append(sh.exe("sleep %d" % (elapse if elapse == 10 else every), wait=False))
+            cmd = "%s/uio_scripts/server/collect_cpu.sh cio_array -w %s -t 30" % (g_runtime_dir, prefix)
+            cmdobjs.append(sh.exe(cmd, wait=False))
+            cmd = "%s/uio_scripts/server/collect_cpu.sh -w %s -t 30" % (g_runtime_dir, prefix)
+            cmdobjs.append(sh.exe(cmd, wait=False))
+
+    return counter_log_dir, counter_log_path, cmdobjs
+
+def perf_test(client_targets, federation_targets):
+    '''
+        run performance test.
+        start fio workload from clients,
+        collect counter logs at the same time,
+        return when all jobs are done.
+    '''
+    jobdesc, fio_job_dir, fio_co, fio_driver = fio_run(client_targets)
+    counter_log_dir, counter_log_path, counter_cos = counter_log(jobdesc, federation_targets)
+
+    # wait for jobs to end
+    if not fio_co.succ():
+        common.log("fio failed. cmd: %s" % (fio_co.cmdline),1)
+        return False
+    for co in counter_cos:
+        if not co.succ():
+            common.log("failed command: %s" % (co.cmdline),1)
+            return False
+
+    # download fio logs from fio driver node
+    logdir = "./perflogs/%s" % (jobdesc)
+    me.call("rm -rf %s" % (logdir))
+    me.call("mkdir -p %s" % (logdir))
+    if not fio_driver.download(logdir, "%s/*" % (fio_job_dir)):
+        return False
+    # download counter logs and cpu data svg files from federation nodes
+    for t in federation_targets:
+        counterdir = "%s/counter_%s" % (logdir, t.address)
+        svgdir = "%s/cpudata_%s" % (logdir, t.address)
+        me.call("mkdir -p %s" % (counterdir))
+        me.call("mkdir -p %s" % (svgdir))
+        if not t.download(counterdir, counter_log_path):
+            return False
+        if not t.download(svgdir, counter_log_dir+"/*%s*.svg" % (jobdesc)):
+            return False
+        
+    return True
 
 if __name__ == "__main__":
     conf = handleopts()
@@ -514,4 +609,6 @@ if __name__ == "__main__":
 
     # iscsi_out(client_targets)
     # iscsi_in(client_targets)
-    fio_run(client_targets)
+    perf_test(client_targets, federation_targets)
+
+
