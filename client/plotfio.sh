@@ -74,7 +74,7 @@ list_files() {
   do
     echo $n
   done
-  echo "`echo ${LOG_LIST} | wc -w` files will be aggregated." "fio_log_interval: $LOG_INTERVAL"
+  echo "`echo ${LOG_LIST} | wc -w` files will be aggregated." "fio_log_interval: ${LOG_INTERVAL}s"
 }
 file_count() {
   # get the fio log file number

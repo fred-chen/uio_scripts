@@ -13,18 +13,42 @@ g_curdir = os.path.abspath(os.getcwd())
 g_conf = None
 g_rootdir = os.path.abspath(os.path.join(os.path.dirname(sys.argv[0]), os.pardir))
 g_runtime_dir = '/tmp'
+g_force = False
+g_shutdown_only = False
+g_boot_only = False
+g_update = False
+g_init = False
+g_perftest = False
 
 def usage(errmsg=""):
     if(errmsg != ""):
         sys.stderr.write("\nERROR: %s\n" % errmsg)
+    just = len("usage: %s" % (os.path.basename(sys.argv[0])))
     print("usage: %s [ -c|--config configfile.json ]" % (os.path.basename(sys.argv[0])))
+    print("%s [ -f|--force ] [ -s|--shutdown ]" % (' '.rjust(just)))
+    print("%s [ -b|--boot ]" % (' '.rjust(just)))
+    print("%s [ -u|--update ]" % (' '.rjust(just)))
+    print("%s [ -i|--init ]" % (' '.rjust(just)))
+    print("%s [ -p|--perftest ]" % (' '.rjust(just)))
+    print(
+        "\n" "Coordinate UniIO nodes, build server and fio clients for performance test." "\n" 
+        "\n" 
+        "options:" "\n"
+        "  -c, --config:     config file path (.json)" "\n"
+        "  -f, --force:      force stop uniio node (kill cio_array)" "\n"
+        "  -s, --shutdown:   gracefully stop uniio nodes" "\n"
+        "  -b, --boot:       start uniio nodes" "\n"
+        "  -u, --update:     update uniio build" "\n"
+        "  -i, --init:       reinit uniio federation" "\n"
+        "  -p, --perftest:   run perftest" "\n"
+        )
     exit(1)
 
 def handleopts():
-    global g_conf, g_runtime_dir
+    global g_conf, g_runtime_dir, g_force, g_shutdown_only, g_boot_only, g_update, g_init, g_perftest
     conf_file = "%s/auto.json" % (os.path.dirname(os.path.realpath(__file__)))
     try:
-        options, args = getopt.gnu_getopt(sys.argv[1:], "hc:", ["help", "configfile="])
+        options, args = getopt.gnu_getopt(sys.argv[1:], "hc:fsbuip", ["help", "configfile=","force","shutdown","boot","update","init","perftest"])
     except getopt.GetoptError as err:
         usage(err)
     for o, a in options:
@@ -32,6 +56,18 @@ def handleopts():
             usage()
         if(o in ('-c', '--config')):
             conf_file = a
+        if(o in ('-f', '--force')):
+            g_force = True
+        if(o in ('-s', '--shutdown')):
+            g_shutdown_only = True
+        if(o in ('-b', '--boot')):
+            g_boot_only = True
+        if(o in ('-u', '--update')):
+            g_update = True
+        if(o in ('-i', '--init')):
+            g_init = True
+        if(o in ('-p', '--perftest')):
+            g_perftest = True
     
     # load configuration file
     f = open(conf_file)
@@ -68,7 +104,7 @@ def prep_targets():
         if t:
             client_targets.append(t)
         else:
-            return None
+            client_targets = []
 
     federation_targets = []
     for n in federation_node_def:
@@ -76,12 +112,12 @@ def prep_targets():
         if t:
             federation_targets.append(t)
         else:
-            return None
+            federation_targets = []
 
     build_server = None
     build_server = gettarget(build_node_def[0], username=build_node_def[1], password=build_node_def[2], svc="ssh", timeout=60)
     if not build_server:
-        return None
+        build_server = None
 
     # upload uio_scripts to targets
     for t in client_targets + federation_targets:
@@ -115,8 +151,7 @@ def build(build_server):
         sh.exe("cd /tmp")
         sh.exe("export GIT_SSH_COMMAND=\"ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o IdentityFile=%s -o ProxyCommand='ssh -q -W %%h:%%p evidence.orcadt.com'\"" % (git_ssh_identityfile))
     # git clone all repos in parallel
-    # repos = ('uniio', 'uniio-ui', 'sysmgmt', 'nasmgmt')
-    repos = ('uniio', 'uniio-ui', 'nasmgmt')
+    repos = ('uniio', 'uniio-ui', 'sysmgmt', 'nasmgmt')
     i = 0
     for repo in repos:
         cmd = "[[ -e '%s/%s' ]] && { cd %s/%s && %s pull --recurse-submodules; } || { %s clone --recurse-submodules git@github.com:uniio/%s.git %s/%s; }" \
@@ -163,8 +198,36 @@ def build(build_server):
             return False
     return True
 
+def cio_running(federation_target):
+    '''
+        return positive number if cio_array and objmgr-fab are both running
+        else 0
+    '''
+    return fab_running() and array_running()
+    
+def fab_running(federation_target):
+    '''
+        return positive number if fabric manager is running
+        else 0
+    '''
+    return federation_target.exe("ps -ef|grep fabric-manager.jar|grep -v grep|wc -l").getint()
+
+def array_running(federation_target):
+    '''
+        return positive number if cio_array is running
+        else 0
+    '''
+    return federation_target.exe("pgrep -nx cio_array|wc -l").getint()
+
 def detach_luns(federation_targets):
-    t = federation_targets[0]
+    t = None
+    for n in federation_targets:
+        if fab_running(n):
+            t = n
+            break
+    if not t:
+        common.log("fabric manager is not running on all federation nodes.", 1)
+        return False
     luns = t.exe("cioctl list | grep GB | awk '{print \$2}' | grep -v '^-'").getlist()
     for lun in luns:
         if not t.exe("cioctl detach --ignore_session_check %s" % (lun)).succ():
@@ -176,7 +239,14 @@ def detach_luns(federation_targets):
     return True
 
 def attach_luns(federation_targets):
-    t = federation_targets[0]
+    t = None
+    for n in federation_targets:
+        if fab_running(n):
+            t = n
+            break
+    if not t:
+        common.log("fabric manager is not running on all federation nodes.", 1)
+        return False
     luns = t.exe("cioctl list | grep GB | awk '{print \$2}' | grep -v '^-'").getlist()
     for lun in luns:
         if not t.exe("cioctl attach %s" % (lun)).succ():
@@ -200,6 +270,15 @@ def shutdown_cluster(federation_targets, force=True):
     return True
 
 def replace_rpm(federation_targets, build_server, force=True):
+    if not build_server:
+        common.log("failed replace rpms. build server is None.", 1)
+        return False
+    if not federation_targets:
+        common.log("failed replace rpms. uniio servers are None.", 1)
+        return False
+    if not build(build_server):
+        return False
+
     # download from build server and upload rpm packages to federation nodes:
     me.call("rm -rf /tmp/rpms && mkdir /tmp/rpms", shell=True)
     if not build_server.download("/tmp/rpms/", "%s/uniio/build/object-array-*.rpm" % (g_runtime_dir)):                    # download uniio rpms
@@ -212,24 +291,20 @@ def replace_rpm(federation_targets, build_server, force=True):
         return False
 
     for t in federation_targets:
-        t.exe("mkdir -p /tmp/rpms")
+        t.exe("rm -rf /tmp/rpms && mkdir -p /tmp/rpms")
         if not t.upload("/tmp/rpms/*.rpm", "/tmp/rpms/"):
             return False
 
     cos = []
     for t in federation_targets:
-        cmd  = "%s/uio_scripts/server/init_cluster.sh -f --replace=/tmp/rpms" % (g_runtime_dir)
+        cmd  = "%s/uio_scripts/server/init_cluster.sh %s --replace=/tmp/rpms" % (g_runtime_dir, '-f' if force else "")
         cos.append(t.exe(cmd, wait=False))
     for co in cos:
         if not co.succ():
-            common.log("failed when shutting down uniio.")
+            common.log("failed when replacing uniio packages.")
             return False
 
-def init_cluster(federation_targets, build_server):
-    # shutdown cluster and replace rpms
-    if not replace_rpm(federation_targets, build_server):
-        return False
-
+def init_cluster(federation_targets):
     # init backend and restart uniio
     cos = []
     for t in federation_targets:
@@ -242,13 +317,37 @@ def init_cluster(federation_targets, build_server):
 
     if not push_topology(federation_targets):
         return False
-    if not create_luns(client_targets, federation_targets):
+    return True
+
+def boot_cluster(federation_targets):
+    # start objmgr and objmgr-fab on all uniio nodes
+    cos = []
+    for t in federation_targets:
+        cmd  = "%s/uio_scripts/server/init_cluster.sh -b" % (g_runtime_dir)
+        cos.append(t.exe(cmd, wait=False))
+    for co in cos:
+        if not co.succ():
+            common.log("failed when starting uniio.")
+            return False
+    return True
+
+def update_cluster(federation_targets, build_server):
+    if not replace_rpm(federation_targets, build_server, g_force):
+        return False
+    if not init_cluster(federation_targets):
         return False
     return True
 
 def push_topology(federation_targets):
+    t = None
+    for n in federation_targets:
+        if fab_running(n):
+            t = n
+            break
+    if not t:
+        common.log("fabric manager is not running on all federation nodes.", 1)
+        return False
     # pushing topology
-    t = federation_targets[0]
     if not t.exe("cioctl topology %s" % (g_conf["topology"])).succ():
         return False
     if not t.exe("cioctl portal --management_ip %s --iscsi_ip %s" % (g_conf["management_ip"], g_conf["iscsi_ip"])).succ():
@@ -261,7 +360,15 @@ def create_luns(client_targets, federation_targets):
     for t in client_targets:
         iqns[t.address] = t.exe("awk -F'=' '{print \$2}' /etc/iscsi/initiatorname.iscsi").stdout.strip()
     
-    t = federation_targets[0]
+    t = None
+    for n in federation_targets:
+        if fab_running(n):
+            t = n
+            break
+    if not t:
+        common.log("fabric manager is not running on all federation nodes.", 1)
+        return False    
+    
     # create luns
     for i in range(g_conf["num_luns"]):
         if not t.exe("cioctl create lun%d %dG" % (i, g_conf["lunsize_G"])).succ():
@@ -288,7 +395,15 @@ def create_luns(client_targets, federation_targets):
     return True
 
 def clear_luns(federation_targets):
-    t = federation_targets[0]
+    t = None
+    for n in federation_targets:
+        if fab_running(n):
+            t = n
+            break
+    if not t:
+        common.log("fabric manager is not running on all federation nodes.", 1)
+        return False    
+    
     mappings = t.exe("cioctl iscsi mapping list | grep iqn | awk '{print \$2}'").getlist()
     for mapping in mappings:
         if not t.exe("cioctl iscsi mapping delete --ignore_session_check --blockdevice %s --yes-i-really-really-mean-it" % (mapping)).succ():
@@ -438,7 +553,7 @@ def fio_build_job_contents(client_target):
 def fio_gen_jobs(client_targets):
     """
         generate fio job files for 'runfio.sh' then upload to clients
-        return: directory that contains fio job files
+        return: directory that contains fio job files on client servers
     """
     jobdesc = None; jobfile_names = []
     # write fio job files for each client
@@ -468,10 +583,12 @@ def fio_run(client_targets):
             cmdobj: command objs that traces the fio jobs
             fio_driver: the target that fio runs on
     '''
+    if not iscsi_out(client_targets): return None
+    if not iscsi_in(client_targets): return None
+    if not fio_server(client_targets): return None
+
     jobdesc, fio_job_dir = fio_gen_jobs(client_targets)
     if not jobdesc:
-        return None
-    if not fio_server(client_targets):
         return None
     
     # choose one of the clients as the fio driver
@@ -519,7 +636,6 @@ def counter_log(jobdesc, federation_targets):
     dur = len(nj_str.split(',')) * len(qd_str.split(',')) * runtime
     cmdobjs = []
 
-    start = time.time()
     # collect counter logs
     counter_log_dir = "%s/counter_logs" % (g_runtime_dir)
     counter_log_path = "%s/%s.%ddur.log" % (counter_log_dir,jobdesc, dur)
@@ -559,6 +675,9 @@ def perf_test(client_targets, federation_targets):
         collect counter logs at the same time,
         return when all jobs are done.
     '''
+    clear_luns(federation_targets)
+    create_luns(client_targets, federation_targets)
+
     jobdesc, fio_job_dir, fio_co, fio_driver = fio_run(client_targets)
     counter_log_dir, counter_log_path, counter_cos = counter_log(jobdesc, federation_targets)
 
@@ -587,30 +706,30 @@ def perf_test(client_targets, federation_targets):
             return False
         if not t.download(svgdir, counter_log_dir+"/*%s*.svg" % (jobdesc)):
             return False
-        
+    common.log("DONE. log location:\n%s\n%s" % ("-"*60, logdir))
     return True
 
 if __name__ == "__main__":
     conf = handleopts()
     if not conf: exit(1)
 
-    targets = prep_targets()
-    if not targets: exit(1)
+    client_targets, federation_targets, build_server = prep_targets()
+    if not client_targets or not federation_targets or not build_server: 
+        exit(1)
 
-    client_targets, federation_targets, build_server = targets
-    # if not build(build_server): exit(1)
+    if g_shutdown_only:
+        if not shutdown_cluster(federation_targets, force=g_force): exit(1)
+    
+    if g_boot_only:
+        if not boot_cluster(federation_targets): exit(1)
+    
+    if g_update:
+        if not update_cluster(federation_targets, build_server): exit(1)
+    
+    if g_init:
+        init_cluster(federation_targets)
+    
+    if g_perftest:
+        perf_test(client_targets, federation_targets)
 
-    # if not init_cluster(federation_targets, build_server): exit(1)
-
-    # push_topology(federation_targets)
-    # create_luns(client_targets, federation_targets)
-    # clear_luns(federation_targets)
-    # detach_luns(federation_targets)
-    # attach_luns(federation_targets)
-    # fio_server(client_targets)
-
-    # iscsi_out(client_targets)
-    # iscsi_in(client_targets)
-    perf_test(client_targets, federation_targets)
-
-
+    exit(0)
