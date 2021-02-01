@@ -17,6 +17,7 @@ g_force = False
 g_shutdown_only = False
 g_boot_only = False
 g_update = False
+g_binonly = False
 g_init = False
 g_perftest = False
 
@@ -27,7 +28,7 @@ def usage(errmsg=""):
     print("usage: %s [ -c|--config configfile.json ]" % (os.path.basename(sys.argv[0])))
     print("%s [ -f|--force ] [ -s|--shutdown ]" % (' '.rjust(just)))
     print("%s [ -b|--boot ]" % (' '.rjust(just)))
-    print("%s [ -u|--update ]" % (' '.rjust(just)))
+    print("%s [ -u|--update ] [ --binonly ]" % (' '.rjust(just)))
     print("%s [ -i|--init ]" % (' '.rjust(just)))
     print("%s [ -p|--perftest ]" % (' '.rjust(just)))
     print(
@@ -39,16 +40,17 @@ def usage(errmsg=""):
         "  -s, --shutdown:   gracefully stop uniio nodes" "\n"
         "  -b, --boot:       start uniio nodes" "\n"
         "  -u, --update:     update uniio build" "\n"
+        "      --binonly:    use with '-u', only update cio_array binary." "\n"
         "  -i, --init:       reinit uniio federation" "\n"
         "  -p, --perftest:   run perftest" "\n"
         )
     exit(1)
 
 def handleopts():
-    global g_conf, g_runtime_dir, g_force, g_shutdown_only, g_boot_only, g_update, g_init, g_perftest
+    global g_conf, g_runtime_dir, g_force, g_shutdown_only, g_boot_only, g_update, g_init, g_perftest, g_binonly
     conf_file = "%s/auto.json" % (os.path.dirname(os.path.realpath(__file__)))
     try:
-        options, args = getopt.gnu_getopt(sys.argv[1:], "hc:fsbuip", ["help", "configfile=","force","shutdown","boot","update","init","perftest"])
+        options, args = getopt.gnu_getopt(sys.argv[1:], "hc:fsbuip", ["help", "configfile=","force","shutdown","boot","update","init","perftest", "binonly"])
     except getopt.GetoptError as err:
         usage(err)
     for o, a in options:
@@ -64,6 +66,8 @@ def handleopts():
             g_boot_only = True
         if(o in ('-u', '--update')):
             g_update = True
+        if(o in ('', '--binonly')):
+            g_binonly = True
         if(o in ('-i', '--init')):
             g_init = True
         if(o in ('-p', '--perftest')):
@@ -162,6 +166,7 @@ def build(build_server):
         if checkout != "default": # checkout desired branch or tag or commit
             cmd = "cd %s/%s && %s checkout %s && %s pull || true" \
                 % (g_runtime_dir, repo, gitcmd, checkout, gitcmd, )
+            cos.append( shs[i%4].exe(cmd, wait=False) )
         i += 1
     for co in cos:
         if not co.succ():
@@ -201,6 +206,40 @@ def build(build_server):
         if not co.succ():
             common.log("failed make command: '%s'" % (co.cmdline), 1)
             return False
+    return True
+
+def build_bin(build_server):
+    '''
+        pull the latest uniio repo from github on build server
+        build cio_array and cio_array.sym on server
+    '''
+
+    global g_runtime_dir
+    gitcmd = get_gitcmd()
+    a,b,c,git_ssh_identityfile = g_conf["build_server"]  # [IP, username, password, git_ssh_identityfile]
+    sh = build_server.newshell()
+    sh.exe("cd /tmp")
+    sh.exe("export GIT_SSH_COMMAND=\"ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o IdentityFile=%s -o ProxyCommand='ssh -q -W %%h:%%p evidence.orcadt.com'\"" % (git_ssh_identityfile))
+    
+    # git clone uniio repo
+    repo = "uniio"
+    checkout = g_conf["%s_checkout"%(repo)] if g_conf.has_key("%s_checkout"%(repo)) else "default"
+    cmd = "[[ -e '%s/%s' ]] && { cd %s/%s && %s pull --recurse-submodules || true; } || { %s clone --recurse-submodules git@github.com:uniio/%s.git %s/%s; }" \
+            % (g_runtime_dir, repo, g_runtime_dir, repo, gitcmd, gitcmd, repo, g_runtime_dir, repo)
+    if not sh.exe(cmd).succ():
+        return False
+    if checkout != "default": # checkout desired branch or tag or commit
+        cmd = "cd %s/%s && %s checkout %s && %s pull || true" \
+            % (g_runtime_dir, repo, gitcmd, checkout, gitcmd, )
+        if not sh.exe(cmd).succ():
+            return False
+    # cmake repos
+    if not sh.exe("cd %s/%s && mkdir -p build && cd build && cmake3 -DCMAKE_BUILD_TYPE=Release .." % (g_runtime_dir, repo)).succ():
+        return False
+
+    # make repos
+    if not sh.exe("cd %s/%s/build && make -j20 cio_array cio_array.sym" % (g_runtime_dir, repo)).succ():
+        return False
     return True
 
 def cio_running(federation_target):
@@ -315,6 +354,33 @@ def replace_rpm(federation_targets, build_server, force=True):
             return False
     return True
 
+
+def replace_bin(federation_targets, build_server, force=True):
+    '''
+        build the latest cio_array, cio_array.sym on build_server and replace binaries on federation nodes
+    '''
+    if not build_server:
+        common.log("failed replace rpms. build server is None.", 1)
+        return False
+    if not federation_targets:
+        common.log("failed replace rpms. uniio servers are None.", 1)
+        return False
+    if not build_bin(build_server):
+        return False
+
+    # download from build server and upload rpm packages to federation nodes:
+    if not build_server.download("/tmp/", "%s/uniio/build/cio_array" % (g_runtime_dir)):  # download cio_array cio_array.sym
+        return False
+    if not build_server.download("/tmp/", "%s/uniio/build/cio_array.sym" % (g_runtime_dir)):  # download cio_array cio_array.sym
+        return False
+
+    for t in federation_targets:
+        if not t.upload("/tmp/cio_array", "/opt/uniio/sbin/"):
+            return False
+        if not t.upload("/tmp/cio_array.sym", "/opt/uniio/sbin/"):
+            return False
+    return True
+
 def init_cluster(federation_targets, force=True):
     if not federation_targets:
         common.log("federation nodes are None.")
@@ -351,8 +417,12 @@ def boot_cluster(federation_targets):
 def update_cluster(federation_targets, build_server, force=True):
     if not shutdown_cluster(federation_targets, force):
         return False
-    if not replace_rpm(federation_targets, build_server, g_force):
-        return False
+    if g_binonly:
+        if not replace_bin(federation_targets, build_server, g_force):
+            return False
+    else:
+        if not replace_rpm(federation_targets, build_server, g_force):
+            return False
     if not init_cluster(federation_targets):
         return False
     return True
@@ -602,9 +672,9 @@ def fio_run(client_targets):
             cmdobj: command objs that traces the fio jobs
             fio_driver: the target that fio runs on
     '''
+    if not fio_server(client_targets): return None
     if not iscsi_out(client_targets): return None
     if not iscsi_in(client_targets): return None
-    if not fio_server(client_targets): return None
 
     jobdesc, fio_job_dir = fio_gen_jobs(client_targets)
     if not jobdesc:
@@ -667,19 +737,19 @@ def counter_log(jobdesc, federation_targets):
         cmdobjs.append(sh.exe(cmd, wait=False))
         common.log("long task running on '%s': %s" % (t, cmd))
     
-    # collect cpu data with 'server/collect_cpu.sh' for one time at 10th second
+    # collect cpu data with 'server/collect_cpu.sh' for one time at start
     # if duration is more than 1 hour, proceed cpu data collection every hour
     every = 3600
-    num_collects = dur / every
+    num_collects = dur / every + 1
     for t in federation_targets:
         sh = t.newshell()   # get a new shell for cpu collection, so no serilization with the counter shell
         if not sh:
             return None, None, None
         # stacking commands in the same shell, it will serialize all commands
         cmdobjs.append(sh.exe("cd %s" % (counter_log_dir), wait=False))
-        for elapse in [10] + [ every * (i+1) for i in range(num_collects) ]:
+        for elapse in [ every * i for i in range(num_collects) ]:
             prefix = "when%ds.%s" % (elapse, jobdesc)
-            cmdobjs.append(sh.exe("sleep %d" % (elapse if elapse == 10 else every), wait=False))
+            cmdobjs.append(sh.exe("sleep %d" % (elapse), wait=False))
             cmd = "%s/uio_scripts/server/collect_cpu.sh cio_array -w %s -t 30" % (g_runtime_dir, prefix)
             cmdobjs.append(sh.exe(cmd, wait=False))
             cmd = "%s/uio_scripts/server/collect_cpu.sh -w %s -t 30" % (g_runtime_dir, prefix)
@@ -722,6 +792,7 @@ def perf_test(client_targets, federation_targets):
             return False
         if not t.download(svgdir, counter_log_dir+"/*%s*.svg" % (jobdesc)):
             return False
+    json.dump(g_conf, open("%s/settings.json" % (logdir), 'w'))  # dump a copy of config file to the logdir
     common.log("DONE. log location:\n%s\n%s" % ("-"*60, logdir))
     return True
 
@@ -740,10 +811,10 @@ if __name__ == "__main__":
         if not boot_cluster(federation_targets): exit(1)
     
     if g_update:
-        if not update_cluster(federation_targets, build_server, force=g_force): exit(1)
+        if not update_cluster(federation_targets, build_server, force=True): exit(1)
     
     if g_init:
-        if not init_cluster(federation_targets): exit(1)
+        if not init_cluster(federation_targets, force=True): exit(1)
     
     if g_perftest:
         if g_init or g_update:
