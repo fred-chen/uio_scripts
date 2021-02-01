@@ -85,7 +85,7 @@ is_arrayrunning() {
 detach_luns() {
   echo -n "detaching luns... "
   is_ciorunning && {
-    for n in `cioctl list | grep GB | awk '{print $2}' | grep -v '^-'`; do cioctl detach $n  > /dev/null 2>&1; done
+    for n in `cioctl list | grep GB | awk '{print $2}' | grep -v '^-'`; do cioctl detach --ignore_session_check $n  > /dev/null 2>&1; done
     for n in `cioctl snapshot list | grep GiB | awk '{print $2}'`; do cioctl detach $n  > /dev/null 2>&1; done;
   }
   echo 'done.'
@@ -101,7 +101,7 @@ attach_luns() {
 delete_luns() {
   echo -n "deleting luns... "
   is_ciorunning && {
-    for n in `cioctl iscsi mapping list | grep iqn | awk '{print $2}'`; do cioctl iscsi mapping delete --blockdevice $n --yes-i-really-really-mean-it; done
+    for n in `cioctl iscsi mapping list | grep iqn | awk '{print $2}'`; do cioctl iscsi mapping delete --ignore_session_check --blockdevice $n --yes-i-really-really-mean-it; done
     for n in `cioctl iscsi target list | grep iqn | awk '{print $2}'`; do cioctl iscsi target delete --name $n --yes-i-really-really-mean-it; done
     for n in `cioctl snapshot list | grep GiB | awk '{print $2}'`; do cioctl detach $n; done
     for n in `cioctl list | grep GB | awk '{print $2}' | grep -v '^-'`; do cioctl delete $n; done

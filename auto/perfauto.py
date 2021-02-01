@@ -129,17 +129,18 @@ def prep_targets():
     return (client_targets, federation_targets, build_server)
 
 def get_gitcmd():
-    git_proxy = "ALL_PROXY="+g_conf["git_proxy"] if g_conf.has_key("git_proxy") else ""
+    git_proxy = "ALL_PROXY="+g_conf["build_server_git_proxy"] if g_conf.has_key("build_server_git_proxy") else ""
     return "%s git" % (git_proxy) if git_proxy else "git"
 
 def build(build_server):
     '''
-        build uniio rpms
+        pull the latest uniio repos (uniio, sysmgmt, nasmgmt, uniio-ui) from github on build server
+        build on server
     '''
+
     global g_runtime_dir
     gitcmd = get_gitcmd()
     a,b,c,git_ssh_identityfile = g_conf["build_server"]  # [IP, username, password, git_ssh_identityfile]
-    print (git_ssh_identityfile)
     cos = []
     shs = []
     for i in range(4):  # use 4 shells for parallel compilation
@@ -154,9 +155,13 @@ def build(build_server):
     repos = ('uniio', 'uniio-ui', 'sysmgmt', 'nasmgmt')
     i = 0
     for repo in repos:
-        cmd = "[[ -e '%s/%s' ]] && { cd %s/%s && %s pull --recurse-submodules; } || { %s clone --recurse-submodules git@github.com:uniio/%s.git %s/%s; }" \
+        checkout = g_conf["%s_checkout"%(repo)] if g_conf.has_key("%s_checkout"%(repo)) else "default"
+        cmd = "[[ -e '%s/%s' ]] && { cd %s/%s && %s pull --recurse-submodules || true; } || { %s clone --recurse-submodules git@github.com:uniio/%s.git %s/%s; }" \
                 % (g_runtime_dir, repo, g_runtime_dir, repo, gitcmd, gitcmd, repo, g_runtime_dir, repo)
         cos.append( shs[i%4].exe(cmd, wait=False) )
+        if checkout != "default": # checkout desired branch or tag or commit
+            cmd = "cd %s/%s && %s checkout %s && %s pull || true" \
+                % (g_runtime_dir, repo, gitcmd, checkout, gitcmd, )
         i += 1
     for co in cos:
         if not co.succ():
@@ -169,13 +174,13 @@ def build(build_server):
     sh3 = shs[3]
     # cmake repos
     cos = []
-    co = sh0.exe("cd %s/%s && rm -rf build && mkdir build && cd build && cmake3 -DCMAKE_BUILD_TYPE=Release .." % (g_runtime_dir, "uniio"), wait=False)
+    co = sh0.exe("cd %s/%s && mkdir -p build && cd build && cmake3 -DCMAKE_BUILD_TYPE=Release .." % (g_runtime_dir, "uniio"), wait=False)
     cos.append(co)
-    co = sh1.exe("cd %s/%s && rm -rf build && mkdir build && cd build && cmake3 -DCMAKE_BUILD_TYPE=Release .." % (g_runtime_dir, "sysmgmt"), wait=False)
+    co = sh1.exe("cd %s/%s && mkdir -p build && cd build && cmake3 -DCMAKE_BUILD_TYPE=Release .." % (g_runtime_dir, "sysmgmt"), wait=False)
     cos.append(co)
-    co = sh2.exe("cd %s/%s && rm -rf build && mkdir build && cd build && cmake3 -DCMAKE_BUILD_TYPE=Release .." % (g_runtime_dir, "nasmgmt"), wait=False)
+    co = sh2.exe("cd %s/%s && mkdir -p build && cd build && cmake3 -DCMAKE_BUILD_TYPE=Release .." % (g_runtime_dir, "nasmgmt"), wait=False)
     cos.append(co)
-    co = sh3.exe("cd %s/%s && rm -rf build_debug && mkdir build_debug && cd build_debug && cmake3 .." % (g_runtime_dir, "uniio-ui"), wait=False)
+    co = sh3.exe("cd %s/%s && mkdir -p build_debug && cd build_debug && cmake3 .." % (g_runtime_dir, "uniio-ui"), wait=False)
     cos.append(co)
     for co in cos:
         if not co.succ():
@@ -261,6 +266,8 @@ def shutdown_cluster(federation_targets, force=True):
     # shutdown cluster
     cos = []
     for t in federation_targets:
+        if not (array_running(t) or fab_running(t)):
+            continue
         cmd  = "%s/uio_scripts/server/init_cluster.sh %s -s" % (g_runtime_dir, "-f" if force else "")
         cos.append(t.exe(cmd, wait=False))
     for co in cos:
@@ -270,6 +277,9 @@ def shutdown_cluster(federation_targets, force=True):
     return True
 
 def replace_rpm(federation_targets, build_server, force=True):
+    '''
+        build the latest uniio on build_server and replace rpms on federation nodes
+    '''
     if not build_server:
         common.log("failed replace rpms. build server is None.", 1)
         return False
@@ -280,7 +290,7 @@ def replace_rpm(federation_targets, build_server, force=True):
         return False
 
     # download from build server and upload rpm packages to federation nodes:
-    me.call("rm -rf /tmp/rpms && mkdir /tmp/rpms", shell=True)
+    me.exe("rm -rf /tmp/rpms && mkdir /tmp/rpms")
     if not build_server.download("/tmp/rpms/", "%s/uniio/build/object-array-*.rpm" % (g_runtime_dir)):                    # download uniio rpms
         return False
     if not build_server.download("/tmp/rpms/", "%s/nasmgmt/build/object-array-nasmgmt-*.rpm" % (g_runtime_dir)):          # download nasmgmt rpms
@@ -303,8 +313,15 @@ def replace_rpm(federation_targets, build_server, force=True):
         if not co.succ():
             common.log("failed when replacing uniio packages.")
             return False
+    return True
 
-def init_cluster(federation_targets):
+def init_cluster(federation_targets, force=True):
+    if not federation_targets:
+        common.log("federation nodes are None.")
+        return False
+    if not shutdown_cluster(federation_targets, force):
+        return False
+        
     # init backend and restart uniio
     cos = []
     for t in federation_targets:
@@ -314,7 +331,7 @@ def init_cluster(federation_targets):
         if not co.succ():
             common.log("failed when initializing uniio.")
             return False
-
+    time.sleep(60)  # give time to fabricmanager to be ready for accepting topology
     if not push_topology(federation_targets):
         return False
     return True
@@ -331,7 +348,9 @@ def boot_cluster(federation_targets):
             return False
     return True
 
-def update_cluster(federation_targets, build_server):
+def update_cluster(federation_targets, build_server, force=True):
+    if not shutdown_cluster(federation_targets, force):
+        return False
     if not replace_rpm(federation_targets, build_server, g_force):
         return False
     if not init_cluster(federation_targets):
@@ -345,7 +364,7 @@ def push_topology(federation_targets):
             t = n
             break
     if not t:
-        common.log("fabric manager is not running on all federation nodes.", 1)
+        common.log("fabric manager is not running on federation nodes.", 1)
         return False
     # pushing topology
     if not t.exe("cioctl topology %s" % (g_conf["topology"])).succ():
@@ -573,7 +592,7 @@ def fio_gen_jobs(client_targets):
             if not t.upload( jobfile_name, fio_job_dir ):
                 return None, None
     for jobfile_name in jobfile_names:
-        me.call("rm -f %s" % (jobfile_name))
+        me.exe("rm -f %s" % (jobfile_name))
     return jobdesc, fio_job_dir
 
 def fio_run(client_targets):
@@ -675,9 +694,6 @@ def perf_test(client_targets, federation_targets):
         collect counter logs at the same time,
         return when all jobs are done.
     '''
-    clear_luns(federation_targets)
-    create_luns(client_targets, federation_targets)
-
     jobdesc, fio_job_dir, fio_co, fio_driver = fio_run(client_targets)
     counter_log_dir, counter_log_path, counter_cos = counter_log(jobdesc, federation_targets)
 
@@ -692,16 +708,16 @@ def perf_test(client_targets, federation_targets):
 
     # download fio logs from fio driver node
     logdir = "./perflogs/%s" % (jobdesc)
-    me.call("rm -rf %s" % (logdir))
-    me.call("mkdir -p %s" % (logdir))
+    me.exe("rm -rf %s" % (logdir))
+    me.exe("mkdir -p %s" % (logdir))
     if not fio_driver.download(logdir, "%s/*" % (fio_job_dir)):
         return False
     # download counter logs and cpu data svg files from federation nodes
     for t in federation_targets:
         counterdir = "%s/counter_%s" % (logdir, t.address)
         svgdir = "%s/cpudata_%s" % (logdir, t.address)
-        me.call("mkdir -p %s" % (counterdir))
-        me.call("mkdir -p %s" % (svgdir))
+        me.exe("mkdir -p %s" % (counterdir))
+        me.exe("mkdir -p %s" % (svgdir))
         if not t.download(counterdir, counter_log_path):
             return False
         if not t.download(svgdir, counter_log_dir+"/*%s*.svg" % (jobdesc)):
@@ -724,12 +740,14 @@ if __name__ == "__main__":
         if not boot_cluster(federation_targets): exit(1)
     
     if g_update:
-        if not update_cluster(federation_targets, build_server): exit(1)
+        if not update_cluster(federation_targets, build_server, force=g_force): exit(1)
     
     if g_init:
-        init_cluster(federation_targets)
+        if not init_cluster(federation_targets): exit(1)
     
     if g_perftest:
-        perf_test(client_targets, federation_targets)
+        if g_init or g_update:
+            if not create_luns(client_targets, federation_targets): exit(1)
+        if not perf_test(client_targets, federation_targets): exit(1)
 
     exit(0)
