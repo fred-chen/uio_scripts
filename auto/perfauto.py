@@ -20,6 +20,8 @@ g_update = False
 g_binonly = False
 g_init = False
 g_perftest = False
+g_fullmap = False
+g_cpudata = False
 
 def usage(errmsg=""):
     if(errmsg != ""):
@@ -30,7 +32,7 @@ def usage(errmsg=""):
     print("%s [ -b|--boot ]" % (' '.rjust(just)))
     print("%s [ -u|--update ] [ --binonly ]" % (' '.rjust(just)))
     print("%s [ -i|--init ]" % (' '.rjust(just)))
-    print("%s [ -p|--perftest ]" % (' '.rjust(just)))
+    print("%s [ -p|--perftest ] [ --fullmap ] [ --cpudata ]" % (' '.rjust(just)))
     print(
         "\n" "Coordinate UniIO nodes, build server and fio clients for performance test." "\n" 
         "\n" 
@@ -40,17 +42,19 @@ def usage(errmsg=""):
         "  -s, --shutdown:   gracefully stop uniio nodes" "\n"
         "  -b, --boot:       start uniio nodes" "\n"
         "  -u, --update:     update uniio build" "\n"
-        "      --binonly:    use with '-u', only update cio_array binary." "\n"
+        "      --binonly:    use along with '-u', only update cio_array binary." "\n"
         "  -i, --init:       reinit uniio federation" "\n"
         "  -p, --perftest:   run perftest" "\n"
+        "      --fullmap:    use along with '-p', all clients see all luns ( clients see different luns if not specified )" "\n"
+        "      --cpudata:    use along with '-p', collect cpu data as svg files while performance test is running" "\n"
         )
     exit(1)
 
 def handleopts():
-    global g_conf, g_runtime_dir, g_force, g_shutdown_only, g_boot_only, g_update, g_init, g_perftest, g_binonly
+    global g_conf, g_runtime_dir, g_force, g_shutdown_only, g_boot_only, g_update, g_init, g_perftest, g_binonly, g_fullmap, g_cpudata
     conf_file = "%s/auto.json" % (os.path.dirname(os.path.realpath(__file__)))
     try:
-        options, args = getopt.gnu_getopt(sys.argv[1:], "hc:fsbuip", ["help", "configfile=","force","shutdown","boot","update","init","perftest", "binonly"])
+        options, args = getopt.gnu_getopt(sys.argv[1:], "hc:fsbuip", ["help", "configfile=","force","shutdown","boot","update","init","perftest", "binonly", "fullmap", "cpudata"])
     except getopt.GetoptError as err:
         usage(err)
     for o, a in options:
@@ -72,6 +76,10 @@ def handleopts():
             g_init = True
         if(o in ('-p', '--perftest')):
             g_perftest = True
+        if(o in ('', '--fullmap')):
+            g_fullmap = True
+        if(o in ('', '--cpudata')):
+            g_cpudata = True
     
     # load configuration file
     f = open(conf_file)
@@ -160,13 +168,14 @@ def build(build_server):
     i = 0
     for repo in repos:
         checkout = g_conf["%s_checkout"%(repo)] if g_conf.has_key("%s_checkout"%(repo)) else "default"
-        cmd = "[[ -e '%s/%s' ]] && { cd %s/%s && %s pull --recurse-submodules || true; } || { %s clone --recurse-submodules git@github.com:uniio/%s.git %s/%s; }" \
-                % (g_runtime_dir, repo, g_runtime_dir, repo, gitcmd, gitcmd, repo, g_runtime_dir, repo)
+        cmd = "[[ -e '%s/%s' ]] || { %s clone --recurse-submodules git@github.com:uniio/%s.git %s/%s; }" \
+                % (g_runtime_dir, repo, gitcmd, repo, g_runtime_dir, repo)
         cos.append( shs[i%4].exe(cmd, wait=False) )
         if checkout != "default": # checkout desired branch or tag or commit
-            cmd = "cd %s/%s && %s checkout %s && %s pull || true" \
-                % (g_runtime_dir, repo, gitcmd, checkout, gitcmd, )
+            cmd = "cd %s/%s && %s checkout %s" % (g_runtime_dir, repo, gitcmd, checkout)
             cos.append( shs[i%4].exe(cmd, wait=False) )
+        cmd = "cd %s/%s && %s pull || true" % (g_runtime_dir, repo, gitcmd)
+        cos.append( shs[i%4].exe(cmd, wait=False) )
         i += 1
     for co in cos:
         if not co.succ():
@@ -224,15 +233,17 @@ def build_bin(build_server):
     # git clone uniio repo
     repo = "uniio"
     checkout = g_conf["%s_checkout"%(repo)] if g_conf.has_key("%s_checkout"%(repo)) else "default"
-    cmd = "[[ -e '%s/%s' ]] && { cd %s/%s && %s pull --recurse-submodules || true; } || { %s clone --recurse-submodules git@github.com:uniio/%s.git %s/%s; }" \
-            % (g_runtime_dir, repo, g_runtime_dir, repo, gitcmd, gitcmd, repo, g_runtime_dir, repo)
-    if not sh.exe(cmd).succ():
-        return False
+    cmd = "[[ -e '%s/%s' ]] || { %s clone --recurse-submodules git@github.com:uniio/%s.git %s/%s; }" \
+            % (g_runtime_dir, repo, gitcmd, repo, g_runtime_dir, repo)
+    if not sh.exe(cmd).succ(): return False
+
     if checkout != "default": # checkout desired branch or tag or commit
-        cmd = "cd %s/%s && %s checkout %s && %s pull || true" \
-            % (g_runtime_dir, repo, gitcmd, checkout, gitcmd, )
-        if not sh.exe(cmd).succ():
-            return False
+        cmd = "cd %s/%s && %s checkout %s" % (g_runtime_dir, repo, gitcmd, checkout)
+        if not sh.exe(cmd).succ(): return False
+    
+    cmd = "cd %s/%s && %s pull || true" % (g_runtime_dir, repo, gitcmd)
+    if not sh.exe(cmd).succ(): return False
+
     # cmake repos
     if not sh.exe("cd %s/%s && mkdir -p build && cd build && cmake3 -DCMAKE_BUILD_TYPE=Release .." % (g_runtime_dir, repo)).succ():
         return False
@@ -466,19 +477,24 @@ def create_luns(client_targets, federation_targets):
             return False
     
     # create initiator groups
+    inames = []
     for address in iqns.keys():
         iqn = iqns[address]
         addr = address.replace(".", "-")
-        if not t.exe("cioctl iscsi initiator create --name i%s --iqn %s" % (addr, iqn)).succ():
+        iname = "i%s" % (addr); inames.append(iname)
+        if not t.exe("cioctl iscsi initiator create --name %s --iqn %s" % (iname, iqn)).succ():
             return False
         if not t.exe("cioctl iscsi initiatorgroup create --name ig%s --initiators i%s" % (addr, addr)).succ():
+            return False
+    if g_fullmap:
+        if not t.exe("cioctl iscsi initiatorgroup create --name igall --initiators %s" % (','.join(inames))).succ():
             return False
 
     # create mappings: luns are evenly mapped to clients
     num_igs = len(iqns); luns_per_client = g_conf["num_luns"] / len(iqns)
     for i in range(g_conf["num_luns"]):
         address = iqns.keys()[(i/luns_per_client)%num_igs]
-        addr = address.replace(".", "-"); igroup = "ig%s" % (addr)
+        addr = address.replace(".", "-"); igroup = 'igall' if g_fullmap else "ig%s" % (addr)
         if not t.exe("cioctl iscsi mapping create --blockdevice lun%d --target tgt-%d --initiatorgroup %s" % (i, i, igroup)).succ():
             return False
     return True
@@ -737,23 +753,24 @@ def counter_log(jobdesc, federation_targets):
         cmdobjs.append(sh.exe(cmd, wait=False))
         common.log("long task running on '%s': %s" % (t, cmd))
     
-    # collect cpu data with 'server/collect_cpu.sh' for one time at start
-    # if duration is more than 1 hour, proceed cpu data collection every hour
-    every = 3600
-    num_collects = dur / every + 1
-    for t in federation_targets:
-        sh = t.newshell()   # get a new shell for cpu collection, so no serilization with the counter shell
-        if not sh:
-            return None, None, None
-        # stacking commands in the same shell, it will serialize all commands
-        cmdobjs.append(sh.exe("cd %s" % (counter_log_dir), wait=False))
-        for elapse in [ every * i for i in range(num_collects) ]:
-            prefix = "when%ds.%s" % (elapse, jobdesc)
-            cmdobjs.append(sh.exe("sleep %d" % (elapse), wait=False))
-            cmd = "%s/uio_scripts/server/collect_cpu.sh cio_array -w %s -t 30" % (g_runtime_dir, prefix)
-            cmdobjs.append(sh.exe(cmd, wait=False))
-            cmd = "%s/uio_scripts/server/collect_cpu.sh -w %s -t 30" % (g_runtime_dir, prefix)
-            cmdobjs.append(sh.exe(cmd, wait=False))
+    if g_cpudata:
+        # collect cpu data with 'server/collect_cpu.sh' for one time at start
+        # if duration is more than 1 hour, proceed cpu data collection every hour
+        every = 3600
+        num_collects = dur / every + 1
+        for t in federation_targets:
+            sh = t.newshell()   # get a new shell for cpu collection, so no serilization with the counter shell
+            if not sh:
+                return None, None, None
+            # stacking commands in the same shell, it will serialize all commands
+            cmdobjs.append(sh.exe("cd %s" % (counter_log_dir), wait=False))
+            for elapse in [ every * i for i in range(num_collects) ]:
+                prefix = "when%ds.%s" % (elapse, jobdesc)
+                cmdobjs.append(sh.exe("sleep %d" % (elapse), wait=False))
+                cmd = "%s/uio_scripts/server/collect_cpu.sh cio_array -w %s -t 30" % (g_runtime_dir, prefix)
+                cmdobjs.append(sh.exe(cmd, wait=False))
+                cmd = "%s/uio_scripts/server/collect_cpu.sh -w %s -t 30" % (g_runtime_dir, prefix)
+                cmdobjs.append(sh.exe(cmd, wait=False))
 
     return counter_log_dir, counter_log_path, cmdobjs
 
@@ -777,7 +794,10 @@ def perf_test(client_targets, federation_targets):
             return False
 
     # download fio logs from fio driver node
-    logdir = "./perflogs/%s" % (jobdesc)
+    localtime = time.localtime()
+    date_str = "%d-%02d-%02d" % (localtime.tm_year, localtime.tm_mon, localtime.tm_mday)
+    time_str = "%02d:%02d:%02d" % (localtime.tm_hour, localtime.tm_min, localtime.tm_sec)
+    logdir = "./perflogs/%s/%s.%s_%s" % (date_str, jobdesc, date_str, time_str)
     me.exe("rm -rf %s" % (logdir))
     me.exe("mkdir -p %s" % (logdir))
     if not fio_driver.download(logdir, "%s/*" % (fio_job_dir)):
@@ -787,13 +807,13 @@ def perf_test(client_targets, federation_targets):
         counterdir = "%s/counter_%s" % (logdir, t.address)
         svgdir = "%s/cpudata_%s" % (logdir, t.address)
         me.exe("mkdir -p %s" % (counterdir))
-        me.exe("mkdir -p %s" % (svgdir))
+        if g_cpudata: me.exe("mkdir -p %s" % (svgdir))
         if not t.download(counterdir, counter_log_path):
             return False
-        if not t.download(svgdir, counter_log_dir+"/*%s*.svg" % (jobdesc)):
+        if g_cpudata and not t.download(svgdir, counter_log_dir+"/*%s*.svg" % (jobdesc)):
             return False
-    json.dump(g_conf, open("%s/settings.json" % (logdir), 'w'))  # dump a copy of config file to the logdir
-    common.log("DONE. log location:\n%s\n%s" % ("-"*60, logdir))
+    json.dump(g_conf, open("%s/settings.json" % (logdir), 'w'), indent=2)  # dump a copy of config file to the logdir
+    common.log("DONE.\n%s\nlog location: %s" % ("-"*60, os.path.join(os.getcwd(), logdir)))
     return True
 
 if __name__ == "__main__":
