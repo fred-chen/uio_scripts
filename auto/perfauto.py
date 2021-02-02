@@ -174,7 +174,7 @@ def build(build_server):
         if checkout != "default": # checkout desired branch or tag or commit
             cmd = "cd %s/%s && %s checkout %s" % (g_runtime_dir, repo, gitcmd, checkout)
             cos.append( shs[i%4].exe(cmd, wait=False) )
-        cmd = "cd %s/%s && %s pull || true" % (g_runtime_dir, repo, gitcmd)
+        cmd = "cd %s/%s && %s pull --no-edit || true" % (g_runtime_dir, repo, gitcmd)
         cos.append( shs[i%4].exe(cmd, wait=False) )
         i += 1
     for co in cos:
@@ -408,7 +408,10 @@ def init_cluster(federation_targets, force=True):
         if not co.succ():
             common.log("failed when initializing uniio.")
             return False
-    time.sleep(60)  # give time to fabricmanager to be ready for accepting topology
+    for t in federation_targets: # give time for fabricmanager to be ready for accepting topology
+        if not t.wait_alive(8080, 120):
+            common.log("fabricmanager is not starting after 120s. port: 8080")
+            return False
     if not push_topology(federation_targets):
         return False
     return True
@@ -555,6 +558,10 @@ def iscsi_in(client_targets):
     # login iscsi session
     for t in client_targets:
         cos.append(t.exe("iscsiadm -m discovery -t st -p %s" % (iscsi_ip), wait=False))
+    for co in cos:
+        if not co.succ():
+            return False
+    for t in client_targets:
         cos.append(t.exe("iscsiadm -m node --login -p %s" % (iscsi_ip), wait=False))
     for co in cos:
         co.wait()
@@ -690,13 +697,13 @@ def fio_run(client_targets):
             cmdobj: command objs that traces the fio jobs
             fio_driver: the target that fio runs on
     '''
-    if not fio_server(client_targets): return None
-    if not iscsi_out(client_targets): return None
-    if not iscsi_in(client_targets): return None
+    if not fio_server(client_targets): return None, None, None, None
+    if not iscsi_out(client_targets): return None, None, None, None
+    if not iscsi_in(client_targets): return None, None, None, None
 
     jobdesc, fio_job_dir = fio_gen_jobs(client_targets)
     if not jobdesc:
-        return None
+        return None, None, None, None
     
     # choose one of the clients as the fio driver
     idx = random.randrange(1,1024) % len(client_targets)
@@ -705,7 +712,7 @@ def fio_run(client_targets):
     # run 'client/runfio.sh' on the fio driver node
     sh_fio = fio_driver.newshell()
     if not sh_fio.exe("cd %s" % (fio_job_dir)):
-        return None
+        return None, None, None, None
     clients=""
     for t in client_targets:
         clients += "%s," % (t.address)  # the tailing ',' will be handled by 'runfio.sh'
@@ -785,11 +792,13 @@ def perf_test(client_targets, federation_targets):
     '''
     status_str = ""
     jobdesc, fio_job_dir, fio_co, fio_driver = fio_run(client_targets)
+    if not fio_co:
+        return False
     counter_log_dir, counter_log_path, counter_cos = counter_log(jobdesc, federation_targets)
 
     # wait for jobs to end
     if not fio_co.succ():
-        status_str += ".FIO_FAIL_on_%s" % (fio_co.shell.t.address)
+        status_str += ".FIO_FAIL_on_%s" % (fio_driver.address)
     for co in counter_cos:
         if not co.succ():
             status_str += ".COUNTER_FAIL_on_%s" % (co.shell.t.address)
@@ -797,7 +806,7 @@ def perf_test(client_targets, federation_targets):
     # download fio logs from fio driver node
     localtime = time.localtime()
     date_str = "%d-%02d-%02d" % (localtime.tm_year, localtime.tm_mon, localtime.tm_mday)
-    time_str = "%02d:%02d:%02d" % (localtime.tm_hour, localtime.tm_min, localtime.tm_sec)
+    time_str = "%02d.%02d.%02d" % (localtime.tm_hour, localtime.tm_min, localtime.tm_sec)
     logdir = "./perflogs/%s/%s.%s_%s%s" % (date_str, jobdesc, date_str, time_str, status_str)
     me.exe("rm -rf %s" % (logdir))
     me.exe("mkdir -p %s" % (logdir))
