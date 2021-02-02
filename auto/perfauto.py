@@ -17,7 +17,7 @@ g_force = False
 g_shutdown_only = False
 g_boot_only = False
 g_update = False
-g_binonly = False
+g_binonly = None
 g_init = False
 g_perftest = False
 g_fullmap = False
@@ -30,23 +30,23 @@ def usage(errmsg=""):
     print("usage: %s [ -c|--config configfile.json ]" % (os.path.basename(sys.argv[0])))
     print("%s [ -f|--force ] [ -s|--shutdown ]" % (' '.rjust(just)))
     print("%s [ -b|--boot ]" % (' '.rjust(just)))
-    print("%s [ -u|--update ] [ --binonly ]" % (' '.rjust(just)))
+    print("%s [ -u|--update ] [ --binonly (binpath|default|tag|branch|commit) ]" % (' '.rjust(just)))
     print("%s [ -i|--init ]" % (' '.rjust(just)))
     print("%s [ -p|--perftest ] [ --fullmap ] [ --cpudata ]" % (' '.rjust(just)))
     print(
         "\n" "Coordinate UniIO nodes, build server and fio clients for performance test." "\n" 
         "\n" 
         "options:" "\n"
-        "  -c, --config:     config file path (.json)" "\n"
-        "  -f, --force:      force stop uniio node (kill cio_array)" "\n"
-        "  -s, --shutdown:   gracefully stop uniio nodes" "\n"
-        "  -b, --boot:       start uniio nodes" "\n"
-        "  -u, --update:     update uniio build" "\n"
-        "      --binonly:    use along with '-u', only update cio_array binary." "\n"
-        "  -i, --init:       reinit uniio federation" "\n"
-        "  -p, --perftest:   run perftest" "\n"
-        "      --fullmap:    use along with '-p', all clients see all luns ( clients see different luns if not specified )" "\n"
-        "      --cpudata:    use along with '-p', collect cpu data as svg files while performance test is running" "\n"
+        "  -c, --config:      config file path (.json)" "\n"
+        "  -f, --force:       force stop uniio node (kill cio_array)" "\n"
+        "  -s, --shutdown:    gracefully stop uniio nodes" "\n"
+        "  -b, --boot:        start uniio nodes" "\n"
+        "  -u, --update:      update uniio build" "\n"
+        "      --binonly:     use along with '-u', only update cio_array binary." "\n"
+        "  -i, --init:        reinit uniio federation" "\n"
+        "  -p, --perftest:    run perftest" "\n"
+        "      --fullmap:     use along with '-p', all clients see all luns ( clients see different luns if not specified )" "\n"
+        "      --cpudata:     use along with '-p', collect cpu data as svg files while performance test is running" "\n"
         )
     exit(1)
 
@@ -54,7 +54,7 @@ def handleopts():
     global g_conf, g_runtime_dir, g_force, g_shutdown_only, g_boot_only, g_update, g_init, g_perftest, g_binonly, g_fullmap, g_cpudata
     conf_file = "%s/auto.json" % (os.path.dirname(os.path.realpath(__file__)))
     try:
-        options, args = getopt.gnu_getopt(sys.argv[1:], "hc:fsbuip", ["help", "configfile=","force","shutdown","boot","update","init","perftest", "binonly", "fullmap", "cpudata"])
+        options, args = getopt.gnu_getopt(sys.argv[1:], "hc:fsbuip", ["help", "configfile=","force","shutdown","boot","update","init","perftest", "binonly=", "fullmap", "cpudata"])
     except getopt.GetoptError as err:
         usage(err)
     for o, a in options:
@@ -71,7 +71,7 @@ def handleopts():
         if(o in ('-u', '--update')):
             g_update = True
         if(o in ('', '--binonly')):
-            g_binonly = True
+            g_binonly = a
         if(o in ('-i', '--init')):
             g_init = True
         if(o in ('-p', '--perftest')):
@@ -94,8 +94,10 @@ def handleopts():
     if not conf:
         common.log("can not parse configuration file '%s'." % conf_file, 1)
         return None
-    g_conf = conf
     g_runtime_dir = conf["runtime_dir"]
+    if g_binonly and (not me.is_path_executable(g_binonly)) and (not g_binonly == 'default'):
+        conf["uniio_checkout"] = g_binonly   # a git commit to checkout
+    g_conf = conf
     return conf
 
 def prep_targets():
@@ -368,7 +370,8 @@ def replace_rpm(federation_targets, build_server, force=True):
 
 def replace_bin(federation_targets, build_server, force=True):
     '''
-        build the latest cio_array, cio_array.sym on build_server and replace binaries on federation nodes
+        if the g_binonly is a local file, simply upload the file and replace '/opt/uniio/sbin/cio_array'
+        if the g_binonly is not a local file, build the latest cio_array, cio_array.sym on build_server and replace binaries on federation nodes
     '''
     if not build_server:
         common.log("failed replace rpms. build server is None.", 1)
@@ -376,20 +379,24 @@ def replace_bin(federation_targets, build_server, force=True):
     if not federation_targets:
         common.log("failed replace rpms. uniio servers are None.", 1)
         return False
-    if not build_bin(build_server):
-        return False
 
-    # download from build server and upload rpm packages to federation nodes:
-    if not build_server.download("/tmp/", "%s/uniio/build/cio_array" % (g_runtime_dir)):  # download cio_array cio_array.sym
-        return False
-    if not build_server.download("/tmp/", "%s/uniio/build/cio_array.sym" % (g_runtime_dir)):  # download cio_array cio_array.sym
-        return False
-
-    for t in federation_targets:
-        if not t.upload("/tmp/cio_array", "/opt/uniio/sbin/"):
+    if me.is_path_executable(g_binonly): # use a local binary file to update the federation
+        for t in federation_targets:
+            if not t.upload(g_binonly, "/opt/uniio/sbin/"):
+                return False
+    else:
+        if not build_bin(build_server):  # build and upload
             return False
-        if not t.upload("/tmp/cio_array.sym", "/opt/uniio/sbin/"):
+        # download from build server and upload rpm packages to federation nodes:
+        if not build_server.download("/tmp/", "%s/uniio/build/cio_array" % (g_runtime_dir)):  # download cio_array cio_array.sym
             return False
+        if not build_server.download("/tmp/", "%s/uniio/build/cio_array.sym" % (g_runtime_dir)):  # download cio_array cio_array.sym
+            return False
+        for t in federation_targets:
+            if not t.upload("/tmp/cio_array", "/opt/uniio/sbin/"):
+                return False
+            if not t.upload("/tmp/cio_array.sym", "/opt/uniio/sbin/"):
+                return False
     return True
 
 def init_cluster(federation_targets, force=True):
