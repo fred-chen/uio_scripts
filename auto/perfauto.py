@@ -577,8 +577,8 @@ def fio_build_job_contents(client_target):
     """
         generate fio job file contents for 'runfio.sh' for a given client
         return: jobdesc, fio_job_content
-            jobdesc string to summarize the job ( may be used as prefix of job filename  )
-            content string for the fio job definition file
+            jobdesc: string to summarize the job ( may be used as prefix of job filename  )
+            fio_job_content: content string for the fio job definition file
     """
     fio_job_content  = "[global]"
     fio_job_content += "\n" "write_bw_log=xxx"   # later xxx will be replaced by runfio.sh
@@ -658,7 +658,9 @@ def fio_build_job_contents(client_target):
 def fio_gen_jobs(client_targets):
     """
         generate fio job files for 'runfio.sh' then upload to clients
-        return: directory that contains fio job files on client servers
+        return: jobdesc, fio_job_dir
+            jobdesc: the string that summarize the fio job
+            fio_job_dir: directory that contains fio job files on client servers
     """
     jobdesc = None; jobfile_names = []
     # write fio job files for each client
@@ -766,7 +768,7 @@ def counter_log(jobdesc, federation_targets):
             cmdobjs.append(sh.exe("cd %s" % (counter_log_dir), wait=False))
             for elapse in [ every * i for i in range(num_collects) ]:
                 prefix = "when%ds.%s" % (elapse, jobdesc)
-                cmdobjs.append(sh.exe("sleep %d" % (elapse), wait=False))
+                cmdobjs.append(sh.exe("sleep %d" % (elapse if elapse == 0 else every), wait=False))
                 cmd = "%s/uio_scripts/server/collect_cpu.sh cio_array -w %s -t 30" % (g_runtime_dir, prefix)
                 cmdobjs.append(sh.exe(cmd, wait=False))
                 cmd = "%s/uio_scripts/server/collect_cpu.sh -w %s -t 30" % (g_runtime_dir, prefix)
@@ -781,23 +783,22 @@ def perf_test(client_targets, federation_targets):
         collect counter logs at the same time,
         return when all jobs are done.
     '''
+    status_str = ""
     jobdesc, fio_job_dir, fio_co, fio_driver = fio_run(client_targets)
     counter_log_dir, counter_log_path, counter_cos = counter_log(jobdesc, federation_targets)
 
     # wait for jobs to end
     if not fio_co.succ():
-        common.log("fio failed. cmd: %s" % (fio_co.cmdline),1)
-        return False
+        status_str += ".FIO_FAIL_on_%s" % (fio_co.shell.t.address)
     for co in counter_cos:
         if not co.succ():
-            common.log("failed command: %s" % (co.cmdline),1)
-            return False
+            status_str += ".COUNTER_FAIL_on_%s" % (co.shell.t.address)
 
     # download fio logs from fio driver node
     localtime = time.localtime()
     date_str = "%d-%02d-%02d" % (localtime.tm_year, localtime.tm_mon, localtime.tm_mday)
     time_str = "%02d:%02d:%02d" % (localtime.tm_hour, localtime.tm_min, localtime.tm_sec)
-    logdir = "./perflogs/%s/%s.%s_%s" % (date_str, jobdesc, date_str, time_str)
+    logdir = "./perflogs/%s/%s.%s_%s%s" % (date_str, jobdesc, date_str, time_str, status_str)
     me.exe("rm -rf %s" % (logdir))
     me.exe("mkdir -p %s" % (logdir))
     if not fio_driver.download(logdir, "%s/*" % (fio_job_dir)):
