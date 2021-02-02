@@ -373,9 +373,6 @@ def replace_bin(federation_targets, build_server, force=True):
         if the g_binonly is a local file, simply upload the file and replace '/opt/uniio/sbin/cio_array'
         if the g_binonly is not a local file, build the latest cio_array, cio_array.sym on build_server and replace binaries on federation nodes
     '''
-    if not build_server:
-        common.log("failed replace rpms. build server is None.", 1)
-        return False
     if not federation_targets:
         common.log("failed replace rpms. uniio servers are None.", 1)
         return False
@@ -385,6 +382,9 @@ def replace_bin(federation_targets, build_server, force=True):
             if not t.upload(g_binonly, "/opt/uniio/sbin/"):
                 return False
     else:
+        if not build_server:
+            common.log("failed replace rpms. build server is None.", 1)
+            return False
         if not build_bin(build_server):  # build and upload
             return False
         # download from build server and upload rpm packages to federation nodes:
