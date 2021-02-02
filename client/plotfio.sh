@@ -98,7 +98,7 @@ plot_iops() {
   gnuplot -e " set grid; set autoscale; set key spacing 2;
     set xlabel 'Time (Minute)';
     set ylabel 'IOPS (K)';
-    set title '${TITLE} chart' font ',20' ;
+    set title '${TITLE}' font ',20' ;
     set terminal png size 1800,600; set output 'plot_$FN.png';
     plot 'plot_$FN.plotdata' using 1:(\$2/1000) title 'read ${TYPE}' with lines lw 3 lc rgb '#00FF00',
                                                   '' using 1:(\$3/1000) title 'write ${TYPE}' with lines lw 3 lc rgb '#0000FF',
@@ -130,7 +130,7 @@ plot_lat() {
   gnuplot -e " set grid; set autoscale; set key spacing 2;
     set xlabel 'Time (Minute)';
     set ylabel '${TYPE} (us)';
-    set title '${TITLE} chart' font ',20' ;
+    set title '${TITLE}' font ',20' ;
     set terminal png size 1800,600; set output 'plot_$FN.png';
     plot 'plot_$FN.plotdata' using 1:(\$2/1000) title 'read ${TYPE}' with lines lw 3 lc rgb '#00FF00',
                           '' using 1:(\$3/1000) title 'write ${TYPE}' with lines lw 3 lc rgb '#0000FF'
