@@ -53,7 +53,7 @@ def usage(errmsg=""):
         "  -m, --histogram:  print histogram (log2 buckets)" "\n"
         "  -r, --ramplines:  ramping lines. to skip first and last few lines of data" "\n"
         "  --startline:      specify a start line, to only analyze lines after that line" "\n"
-        "  --endline:        specify an end line, to only analyze lines before that line"
+        "  --endline:        specify an end line, to only analyze lines before that line" "\n"
         "  -k:               keep temp files" "\n"
          "\n"
         "if no 'logname' given in command line, counterana.py reads counter data from stdin\n"
