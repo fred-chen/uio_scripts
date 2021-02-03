@@ -30,7 +30,7 @@ def usage(errmsg=""):
     print("usage: %s [ -c|--config configfile.json ]" % (os.path.basename(sys.argv[0])))
     print("%s [ -f|--force ] [ -s|--shutdown ]" % (' '.rjust(just)))
     print("%s [ -b|--boot ]" % (' '.rjust(just)))
-    print("%s [ -u|--update ] [ --binonly (binpath|default|tag|branch|commit) ]" % (' '.rjust(just)))
+    print("%s [ -u|--update ] [ --binonly (binpath|conf|tag|branch|commit) ]" % (' '.rjust(just)))
     print("%s [ -i|--init ]" % (' '.rjust(just)))
     print("%s [ -p|--perftest ] [ --fullmap ] [ --cpudata ]" % (' '.rjust(just)))
     print(
@@ -95,7 +95,7 @@ def handleopts():
         common.log("can not parse configuration file '%s'." % conf_file, 1)
         return None
     g_runtime_dir = conf["runtime_dir"]
-    if g_binonly and (not me.is_path_executable(g_binonly)) and (not g_binonly == 'default'):
+    if g_binonly and (g_binonly != 'conf'):
         conf["uniio_checkout"] = g_binonly   # a git commit to checkout
     g_conf = conf
     return conf
@@ -242,7 +242,9 @@ def build_bin(build_server):
     if checkout != "default": # checkout desired branch or tag or commit
         cmd = "cd %s/%s && %s checkout %s" % (g_runtime_dir, repo, gitcmd, checkout)
         if not sh.exe(cmd).succ(): return False
-    
+
+    cmd = "cd %s/%s && %s log --pretty=format:'%%h|%%ci|%%an|%%s' | head -5 || true" % (g_runtime_dir, repo, gitcmd)
+    if not sh.exe(cmd).succ(): return False
     cmd = "cd %s/%s && %s pull || true" % (g_runtime_dir, repo, gitcmd)
     if not sh.exe(cmd).succ(): return False
 
@@ -379,7 +381,7 @@ def replace_bin(federation_targets, build_server, force=True):
 
     if me.is_path_executable(g_binonly): # use a local binary file to update the federation
         for t in federation_targets:
-            if not t.upload(g_binonly, "/opt/uniio/sbin/"):
+            if not t.upload(g_binonly, "/opt/uniio/sbin/cio_array"):
                 return False
     else:
         if not build_server:
