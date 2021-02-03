@@ -22,6 +22,9 @@ g_init = False
 g_perftest = False
 g_fullmap = False
 g_cpudata = False
+g_fill = 0
+g_createluns = 0
+g_delluns_only = False
 
 def usage(errmsg=""):
     if(errmsg != ""):
@@ -32,7 +35,7 @@ def usage(errmsg=""):
     print("%s [ -b|--boot ]" % (' '.rjust(just)))
     print("%s [ -u|--update ] [ --binonly (binpath|conf|tag|branch|commit) ]" % (' '.rjust(just)))
     print("%s [ -i|--init ]" % (' '.rjust(just)))
-    print("%s [ -p|--perftest ] [ --fullmap ] [ --cpudata ]" % (' '.rjust(just)))
+    print("%s [ -p|--perftest ] [ --createluns num ] [ --fullmap ] [ --cpudata ] [ --fill sec ]" % (' '.rjust(just)))
     print(
         "\n" "Coordinate UniIO nodes, build server and fio clients for performance test." "\n" 
         "\n" 
@@ -45,16 +48,19 @@ def usage(errmsg=""):
         "      --binonly:     use along with '-u', only update cio_array binary." "\n"
         "  -i, --init:        reinit uniio federation" "\n"
         "  -p, --perftest:    run perftest" "\n"
+        "      --createluns:  use along with '-p', create a given number of luns" "\n"
         "      --fullmap:     use along with '-p', all clients see all luns ( clients see different luns if not specified )" "\n"
         "      --cpudata:     use along with '-p', collect cpu data as svg files while performance test is running" "\n"
+        "      --fill:        use along with '-p', fill the luns with pure write workload for a given time in seconds" "\n"
+        "  --deleteluns:      delete all existing luns" "\n"
         )
     exit(1)
 
 def handleopts():
-    global g_conf, g_runtime_dir, g_force, g_shutdown_only, g_boot_only, g_update, g_init, g_perftest, g_binonly, g_fullmap, g_cpudata
+    global g_conf, g_runtime_dir, g_force, g_shutdown_only, g_boot_only, g_update, g_init, g_perftest, g_binonly, g_fullmap, g_cpudata, g_fill, g_createluns, g_delluns_only
     conf_file = "%s/auto.json" % (os.path.dirname(os.path.realpath(__file__)))
     try:
-        options, args = getopt.gnu_getopt(sys.argv[1:], "hc:fsbuip", ["help", "configfile=","force","shutdown","boot","update","init","perftest", "binonly=", "fullmap", "cpudata"])
+        options, args = getopt.gnu_getopt(sys.argv[1:], "hc:fsbuipd", ["help", "configfile=","force","shutdown","boot","update","init","perftest", "binonly=", "fullmap", "cpudata", "fill=", "createluns=","deleteluns"])
     except getopt.GetoptError as err:
         usage(err)
     for o, a in options:
@@ -80,7 +86,13 @@ def handleopts():
             g_fullmap = True
         if(o in ('', '--cpudata')):
             g_cpudata = True
-    
+        if(o in ('', '--fill')):
+            g_fill = int(a)
+        if(o in ('', '--createluns')):
+            g_createluns = int(a)
+        if(o in ('', '--deleteluns')):
+            g_delluns_only = True
+     
     # load configuration file
     f = open(conf_file)
     if not f:
@@ -170,15 +182,15 @@ def build(build_server):
     i = 0
     for repo in repos:
         checkout = g_conf["%s_checkout"%(repo)] if g_conf.has_key("%s_checkout"%(repo)) else "default"
-        cmd = "[[ -e '%s/%s' ]] || { %s clone --recurse-submodules git@github.com:uniio/%s.git %s/%s; }" \
-                % (g_runtime_dir, repo, gitcmd, repo, g_runtime_dir, repo)
+        cmd = "[[ -e '%s/%s' ]] && { cd %s/%s && git fetch; } || { %s clone --recurse-submodules git@github.com:uniio/%s.git %s/%s; }" \
+                % (g_runtime_dir, repo, g_runtime_dir, repo, gitcmd, repo, g_runtime_dir, repo)
         cos.append( shs[i%4].exe(cmd, wait=False) )
         if checkout != "default": # checkout desired branch or tag or commit
             cmd = "cd %s/%s && %s checkout %s" % (g_runtime_dir, repo, gitcmd, checkout)
             cos.append( shs[i%4].exe(cmd, wait=False) )
         cmd = "cd %s/%s && %s pull --no-edit || true" % (g_runtime_dir, repo, gitcmd)
         cos.append( shs[i%4].exe(cmd, wait=False) )
-        cmd = "cd %s/%s && %s log --pretty=format:'%%h|%%ci|%%an|%%s' | head -5 || true" % (g_runtime_dir, repo, gitcmd)
+        cmd = "cd %s/%s && %s log --pretty=format:'%%h|%%ci|%%an|%%s' | head -8 || true" % (g_runtime_dir, repo, gitcmd)
         cos.append( shs[i%4].exe(cmd, wait=False) )
         i += 1
     for co in cos:
@@ -237,8 +249,8 @@ def build_bin(build_server):
     # git clone uniio repo
     repo = "uniio"
     checkout = g_conf["%s_checkout"%(repo)] if g_conf.has_key("%s_checkout"%(repo)) else "default"
-    cmd = "[[ -e '%s/%s' ]] || { %s clone --recurse-submodules git@github.com:uniio/%s.git %s/%s; }" \
-            % (g_runtime_dir, repo, gitcmd, repo, g_runtime_dir, repo)
+    cmd = "[[ -e '%s/%s' ]] && { cd %s/%s && git fetch; } || { %s clone --recurse-submodules git@github.com:uniio/%s.git %s/%s; }" \
+            % (g_runtime_dir, repo, g_runtime_dir, repo, gitcmd, repo, g_runtime_dir, repo)
     if not sh.exe(cmd).succ(): return False
 
     if checkout != "default": # checkout desired branch or tag or commit
@@ -247,7 +259,7 @@ def build_bin(build_server):
 
     cmd = "cd %s/%s && %s pull --no-edit || true" % (g_runtime_dir, repo, gitcmd)
     if not sh.exe(cmd).succ(): return False
-    cmd = "cd %s/%s && %s log --pretty=format:'%%h|%%ci|%%an|%%s' | head -5 || true" % (g_runtime_dir, repo, gitcmd)
+    cmd = "cd %s/%s && %s log --pretty=format:'%%h|%%ci|%%an|%%s' | head -8 || true" % (g_runtime_dir, repo, gitcmd)
     if not sh.exe(cmd).succ(): return False
 
     # cmake repos
@@ -468,7 +480,7 @@ def push_topology(federation_targets):
         return False
     return True
 
-def create_luns(client_targets, federation_targets):
+def create_luns(client_targets, federation_targets, numluns=0):
     # get client iscsi initiator iqns for mapping
     iqns = {}  # { address : iqn }
     for t in client_targets:
@@ -484,7 +496,8 @@ def create_luns(client_targets, federation_targets):
         return False    
     
     # create luns
-    for i in range(g_conf["num_luns"]):
+    num_luns = numluns if numluns else g_conf["num_luns"] if g_conf.has_key("num_luns") else 18
+    for i in range(num_luns):
         if not t.exe("cioctl create lun%d %dG" % (i, g_conf["lunsize_G"])).succ():
             return False
         if not t.exe("cioctl iscsi target create --name tgt-%d" % (i)).succ():
@@ -505,15 +518,24 @@ def create_luns(client_targets, federation_targets):
             return False
 
     # create mappings: luns are evenly mapped to clients
-    num_igs = len(iqns); luns_per_client = g_conf["num_luns"] / len(iqns)
-    for i in range(g_conf["num_luns"]):
+    num_igs = len(iqns); luns_per_client = num_luns / len(iqns)
+    for i in range(num_luns):
         address = iqns.keys()[(i/luns_per_client)%num_igs]
         addr = address.replace(".", "-"); igroup = 'igall' if g_fullmap else "ig%s" % (addr)
         if not t.exe("cioctl iscsi mapping create --blockdevice lun%d --target tgt-%d --initiatorgroup %s" % (i, i, igroup)).succ():
             return False
     return True
 
-def clear_luns(federation_targets):
+def clear_luns(client_targets, federation_targets):
+    iscsi_ip = g_conf["iscsi_ip"]
+    cos = []
+    for t in client_targets:
+        cos.append(t.exe("iscsiadm -m node --logout", wait=False))
+        cos.append(t.exe("iscsiadm -m session -u", wait=False))
+        cos.append(t.exe("iscsiadm -m discoverydb -t sendtargets -p %s:3260 -o delete" % (iscsi_ip), wait=False))
+    for co in cos:
+        co.wait()
+
     t = None
     for n in federation_targets:
         if fab_running(n):
@@ -591,7 +613,7 @@ def fio_server(client_targets):
             return False    
     return True
 
-def fio_build_job_contents(client_target):
+def fio_build_job_contents(client_target, fill=0):
     """
         generate fio job file contents for 'runfio.sh' for a given client
         return: jobdesc, fio_job_content
@@ -599,10 +621,11 @@ def fio_build_job_contents(client_target):
             fio_job_content: content string for the fio job definition file
     """
     fio_job_content  = "[global]"
-    fio_job_content += "\n" "write_bw_log=xxx"   # later xxx will be replaced by runfio.sh
-    fio_job_content += "\n" "write_lat_log=xxx"  # later xxx will be replaced by runfio.sh
-    fio_job_content += "\n" "write_iops_log=xxx" # later xxx will be replaced by runfio.sh
-    fio_job_content += "\n" "log_avg_msec=10000" 
+    if not fill:
+        fio_job_content += "\n" "write_bw_log=xxx"   # later xxx will be replaced by runfio.sh
+        fio_job_content += "\n" "write_lat_log=xxx"  # later xxx will be replaced by runfio.sh
+        fio_job_content += "\n" "write_iops_log=xxx" # later xxx will be replaced by runfio.sh
+        fio_job_content += "\n" "log_avg_msec=10000" 
     fio_job_content += "\n" "ioengine=libaio" 
     fio_job_content += "\n" "direct=1" 
     fio_job_content += "\n" "sync=1" 
@@ -610,20 +633,24 @@ def fio_build_job_contents(client_target):
     dist = g_conf["fio_random_distribution"] if g_conf.has_key("fio_random_distribution") else "random"
     fio_job_content += "\n" "random_distribution=%s" % (dist)
     
-    duprate = g_conf["fio_dedupe_percentage"] if g_conf.has_key("fio_dedupe_percentage") else "80"
+    duprate = g_conf["fio_dedupe_percentage"] if g_conf.has_key("fio_dedupe_percentage") else 80
+    if fill: duprate = 0
     if duprate != 0:
         fio_job_content += "\n" "dedupe_percentage=%d" % (duprate) 
     else:   # no deduplicable data, small changes to every fio buffer
         fio_job_content += "\n" "scramble_buffers=1"
     
-    comprate = g_conf["fio_buffer_compress_percentage"] if g_conf.has_key("fio_buffer_compress_percentage") else "60"
+    comprate = g_conf["fio_buffer_compress_percentage"] if g_conf.has_key("fio_buffer_compress_percentage") else 60
+    if fill: comprate = 0
     if comprate != 0:
         fio_job_content += "\n" "buffer_compress_percentage=%d" % (comprate)
     else:   # no compressible data, refill every fio buffer
         fio_job_content += "\n" "refill_buffers=1"
     
     fio_job_content += "\n" "group_reporting=1"
+    
     runtime = g_conf["fio_runtime"] if g_conf.has_key("fio_runtime") else 60
+    if fill: runtime = fill
     fio_job_content += "\n" "runtime=%d" % (runtime) 
     fio_job_content += "\n" "time_based=1" 
     fio_job_content += "\n" "ramp_time=%d " % (g_conf["fio_ramp_time"] if g_conf.has_key("fio_ramp_time") else 60)
@@ -632,7 +659,7 @@ def fio_build_job_contents(client_target):
     njobs = g_conf["fio_numjobs"] if g_conf.has_key("fio_numjobs") else 1
     fio_job_content += "\n" "numjobs=%d" % (njobs) 
     qdepth = g_conf["fio_iodepth"] if g_conf.has_key("fio_iodepth") else 3
-    fio_job_content += "\n" "iodepth=%d" % (qdepth) 
+    fio_job_content += "\n" "iodepth=%d" % (qdepth)
     fio_job_content += "\n" ""
 
     rw = g_conf["fio_rw"] if g_conf.has_key("fio_rw") else "randrw"
@@ -640,10 +667,14 @@ def fio_build_job_contents(client_target):
     qd_str = g_conf["runfio_qdepth"] if g_conf.has_key("runfio_qdepth") else str(qdepth)
     jobdesc = "%s.qd%s.njobs%s.%ddup.%dcomp.%s_dist.%dsec" % \
               (rw, re.sub(',| ', '-', qd_str.strip()), re.sub(',| ', '-', nj_str.strip()), duprate, comprate, dist, runtime)
+    if fill: rw = "write"
 
     # get UNIIO iscsi luns on client
     cmd = "lsblk -p -o name,vendor | grep UNIIO | awk '{print \$1}'"
     uio_devs = client_target.exe(cmd).getlist()
+    if not uio_devs:  # no uniio iscsi devices on this client
+        common.log("no uniio iscsi devices on this client: %s" % (client_target.address), 1)
+        return None, None
 
     for dev in uio_devs:
         fio_job_content += "\n" ""
@@ -673,7 +704,7 @@ def fio_build_job_contents(client_target):
     return jobdesc, fio_job_content
 
 
-def fio_gen_jobs(client_targets):
+def fio_gen_jobs(client_targets, fill=0):
     """
         generate fio job files for 'runfio.sh' then upload to clients
         return: jobdesc, fio_job_dir
@@ -683,11 +714,15 @@ def fio_gen_jobs(client_targets):
     jobdesc = None; jobfile_names = []
     # write fio job files for each client
     for t in client_targets:
+        jobdesc, fio_filljob_content = fio_build_job_contents(t, fill)
         jobdesc, fio_jobfile_content = fio_build_job_contents(t)
+
         jobfile_name = "%s_%s.fio" % (jobdesc, t.address)
-        f = open(jobfile_name, "w")
-        f.write(fio_jobfile_content)
-        f.close()
+        f = open(jobfile_name, "w"); f.write(fio_jobfile_content); f.close()
+        jobfile_names.append(jobfile_name)
+
+        jobfile_name = "fill%d_%s_%s.fio" % (fill, jobdesc, t.address)
+        f = open(jobfile_name, "w"); f.write(fio_filljob_content); f.close()
         jobfile_names.append(jobfile_name)
     
     # upload fio job files to all clients
@@ -701,21 +736,23 @@ def fio_gen_jobs(client_targets):
         me.exe("rm -f %s" % (jobfile_name))
     return jobdesc, fio_job_dir
 
-def fio_run(client_targets):
+def fio_run(client_targets, fill=0):
     '''
         run fio job on one of the client nodes
+        fill: a number
+              fill luns for a given duration in seconds before performing the performance test
         return: (jobdesc, fio_job_dir, cmdobj, fio_driver)
-            cmdobj: command objs that traces the fio jobs
+            cmdobjs: command objs that traces the fio jobs
             fio_driver: the target that fio runs on
     '''
     if not fio_server(client_targets): return None, None, None, None
     if not iscsi_out(client_targets): return None, None, None, None
     if not iscsi_in(client_targets): return None, None, None, None
 
-    jobdesc, fio_job_dir = fio_gen_jobs(client_targets)
+    jobdesc, fio_job_dir = fio_gen_jobs(client_targets, fill)
     if not jobdesc:
         return None, None, None, None
-    
+
     # choose one of the clients as the fio driver
     idx = random.randrange(1,1024) % len(client_targets)
     fio_driver = client_targets[idx]
@@ -732,12 +769,15 @@ def fio_run(client_targets):
     nj_str = g_conf["runfio_jobs"] if g_conf.has_key("runfio_jobs") else str(njobs)
     qd_str = g_conf["runfio_qdepth"] if g_conf.has_key("runfio_qdepth") else str(qdepth)
     runtime_str = g_conf["fio_runtime"] if g_conf.has_key("fio_runtime") else "60"
+    cos = []
+    if fill:
+        cmd = "%s/uio_scripts/client/runfio.sh --jobs 4 --qdepth 128 --clients %s --profiledir %s -t %s %s | tee %s/fiorunning.log" % (g_runtime_dir, clients, fio_job_dir, fill, "fill%d_%s" % (fill, jobdesc), g_runtime_dir)
+        cos.append(sh_fio.exe(cmd, wait=False))
     cmd = "%s/uio_scripts/client/runfio.sh --jobs '%s' --qdepth '%s' --clients %s --profiledir %s -t %s %s | tee %s/fiorunning.log" % (g_runtime_dir, nj_str, qd_str, clients, fio_job_dir, runtime_str, jobdesc, g_runtime_dir)
-
-    co = sh_fio.exe(cmd, wait=False)
+    cos.append(sh_fio.exe(cmd, wait=False))
     common.log("long task running on '%s': %s" % (fio_driver, cmd))
 
-    return (jobdesc, fio_job_dir, co, fio_driver)
+    return (jobdesc, fio_job_dir, cos, fio_driver)
 
 def counter_log(jobdesc, federation_targets):
     '''
@@ -794,25 +834,31 @@ def counter_log(jobdesc, federation_targets):
 
     return counter_log_dir, counter_log_path, cmdobjs
 
-def perf_test(client_targets, federation_targets):
+def perf_test(client_targets, federation_targets, fill=0):
     '''
         run performance test.
         start fio workload from clients,
         collect counter logs at the same time,
+        fill: fill the luns first, for a given time
         return when all jobs are done.
     '''
     status_str = ""
-    jobdesc, fio_job_dir, fio_co, fio_driver = fio_run(client_targets)
-    if not fio_co:
+    jobdesc, fio_job_dir, fio_cos, fio_driver = fio_run(client_targets, fill)
+    if not fio_cos:
         return False
     counter_log_dir, counter_log_path, counter_cos = counter_log(jobdesc, federation_targets)
 
     # wait for jobs to end
-    if not fio_co.succ():
-        status_str += ".FIO_FAIL_on_%s" % (fio_driver.address)
+    fio_fail = None
+    for fio_co in fio_cos:
+        if not fio_co.succ():
+            fio_fail = fio_co
+    if fio_fail: status_str += ".FIO_FAIL_on_%s" % (fio_driver.address)
+    counter_fail = None
     for co in counter_cos:
         if not co.succ():
-            status_str += ".COUNTER_FAIL_on_%s" % (co.shell.t.address)
+            counter_fail = co
+    if counter_fail: status_str += ".COUNTER_FAIL_on_%s" % (counter_fail.shell.t.address)
 
     # download fio logs from fio driver node
     localtime = time.localtime()
@@ -834,7 +880,7 @@ def perf_test(client_targets, federation_targets):
         if g_cpudata and not t.download(svgdir, counter_log_dir+"/*%s*.svg" % (jobdesc)):
             return False
     json.dump(g_conf, open("%s/settings.json" % (logdir), 'w'), indent=2)  # dump a copy of config file to the logdir
-    common.log("DONE.\n%s\nlog location: %s" % ("-"*60, os.path.join(os.getcwd(), logdir)))
+    common.log("DONE EEPERFTEST.\n%s\nlog location: %s" % ("-"*60, os.path.join(os.getcwd(), logdir)))
     return True
 
 if __name__ == "__main__":
@@ -842,8 +888,10 @@ if __name__ == "__main__":
     if not conf: exit(1)
 
     client_targets, federation_targets, build_server = prep_targets()
-    if not client_targets or not federation_targets or not build_server: 
-        exit(1)
+    if not client_targets or not federation_targets or not build_server: exit(1)
+
+    if g_delluns_only:
+        if not clear_luns(client_targets, federation_targets): exit(1)
 
     if g_shutdown_only:
         if not shutdown_cluster(federation_targets, force=g_force): exit(1)
@@ -858,8 +906,9 @@ if __name__ == "__main__":
         if not init_cluster(federation_targets, force=True): exit(1)
     
     if g_perftest:
-        if g_init or g_update:
-            if not create_luns(client_targets, federation_targets): exit(1)
-        if not perf_test(client_targets, federation_targets): exit(1)
-
+        if g_init or g_update or g_createluns:
+            if not create_luns(client_targets, federation_targets, g_createluns): exit(1)
+        if not perf_test(client_targets, federation_targets, g_fill): exit(1)
+    
+    common.log("DONE.")
     exit(0)
