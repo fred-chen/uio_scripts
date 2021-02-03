@@ -178,6 +178,8 @@ def build(build_server):
             cos.append( shs[i%4].exe(cmd, wait=False) )
         cmd = "cd %s/%s && %s pull --no-edit || true" % (g_runtime_dir, repo, gitcmd)
         cos.append( shs[i%4].exe(cmd, wait=False) )
+        cmd = "cd %s/%s && %s log --pretty=format:'%%h|%%ci|%%an|%%s' | head -5 || true" % (g_runtime_dir, repo, gitcmd)
+        cos.append( shs[i%4].exe(cmd, wait=False) )
         i += 1
     for co in cos:
         if not co.succ():
@@ -243,9 +245,9 @@ def build_bin(build_server):
         cmd = "cd %s/%s && %s checkout %s" % (g_runtime_dir, repo, gitcmd, checkout)
         if not sh.exe(cmd).succ(): return False
 
-    cmd = "cd %s/%s && %s log --pretty=format:'%%h|%%ci|%%an|%%s' | head -5 || true" % (g_runtime_dir, repo, gitcmd)
+    cmd = "cd %s/%s && %s pull --no-edit || true" % (g_runtime_dir, repo, gitcmd)
     if not sh.exe(cmd).succ(): return False
-    cmd = "cd %s/%s && %s pull || true" % (g_runtime_dir, repo, gitcmd)
+    cmd = "cd %s/%s && %s log --pretty=format:'%%h|%%ci|%%an|%%s' | head -5 || true" % (g_runtime_dir, repo, gitcmd)
     if not sh.exe(cmd).succ(): return False
 
     # cmake repos
