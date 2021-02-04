@@ -13,6 +13,8 @@ FN=
 KEEPFILES=false
 DEDUP_RATE=
 COMPRESS_RATE=
+START=0
+END=0
 
 function usage {
   [[ ! -z $1 ]] && {
@@ -22,9 +24,11 @@ function usage {
   }
   len=$(expr length "usage: `basename $0`")
   printf "usage: `basename $0` <logname> [-t iops|clat|slat|lat]%s\n"
-  printf "%${len}s [--title chart_title] [-k|--keep]\n" " "
+  printf "%${len}s [--title chart_title] [-s starttime] [-e endtime] [-k|--keep]\n" " "
   echo
   echo "options:"
+  echo "  -s: start time in minutes."
+  echo "  -e: end time in minutes."
   echo "  -k: keep temp files."
   echo "  -t: type of plots, can be one of: iops, clat, slat, lat."
   echo
@@ -36,14 +40,15 @@ function usage {
 }
 
 handleopts() {
-  OPTS=`getopt -o ht:d:e:g:k -l help,title:,keep -- "$@"`
+  OPTS=`getopt -o ht:d:e:g:ks:e: -l help,title:,keep -- "$@"`
   [[ $? -eq 0 ]] || usage
   eval set -- "$OPTS"
   while true ; do
       case "$1" in
           -t) TYPE=$2; shift 2;;
-          -e) COUNTER_PATTERN=$2; shift 2;;
           -g | --title) TITLE=$2; shift 2;;
+          -s) START=$2; shift 2;;
+          -e) END=$2; shift 2;;
           -k | --keep) KEEPFILES=true; shift 1;;
           -h | --help) shift 1; usage;;
           --) shift; break;;
@@ -86,7 +91,21 @@ plot_iops() {
   # output format is like: "time read_iops write_iops total_iops"
   AVG_FACTOR=$((${PLOT_INTERVAL}/${LOG_INTERVAL}))
   echo -n "plotting IOPS chart..."
-  cat ${LOG_LIST} | \
+  recs_per_minute=`expr 60 / ${LOG_INTERVAL}`
+  start=0
+  lines=0
+  [[ ${START} -gt 0 ]] && start=$((START * 2 * $recs_per_minute - 1))
+  [[ ${END} -gt 0 ]] && lines=$(((END-$START) * 2 * $recs_per_minute + 1))
+  for log in ${LOG_LIST}
+  do
+    if [ $lines -gt 0 ]; then
+      cat $log | tail --lines=+${start} | head --lines=${lines}
+    else
+      cat $log | tail --lines=+${start}
+    fi
+  done > ./tmp_fio_log
+
+  cat ./tmp_fio_log | \
   awk -F ',' "
           { t=int(\$1/1000/${PLOT_INTERVAL}); arr[t,int(\$3)]+=\$2; T[t] }
       END { for(time in T) printf(\"%d\t%d\t%d\t%d\n\",
@@ -105,7 +124,7 @@ plot_iops() {
                                                   '' using 1:(\$4/1000) title 'total ${TYPE}' with lines lw 3 lc rgb '#FF0000'
    "
    echo "done."
-   [[ ${KEEPFILES} == false ]] && rm -f plot_$FN.plotdata
+   [[ ${KEEPFILES} == false ]] && rm -f plot_$FN.plotdata && rm -f ./tmp_fio_log
    ls `pwd`/plot_$FN.png
 }
 plot_lat() {
