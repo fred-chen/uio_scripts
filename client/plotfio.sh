@@ -136,7 +136,21 @@ plot_lat() {
   echo "FILECOUNT=$FILECOUNT, PLOT_INTERVAL=$PLOT_INTERVAL, LOG_INTERVAL=$LOG_INTERVAL"
 
   echo -n "plotting '${TYPE}' chart..."
-  cat ${LOG_LIST} | \
+  recs_per_minute=`expr 60 / ${LOG_INTERVAL}`
+  start=0
+  lines=0
+  [[ ${START} -gt 0 ]] && start=$((START * 2 * $recs_per_minute - 1))
+  [[ ${END} -gt 0 ]] && lines=$(((END-$START) * 2 * $recs_per_minute + 1))
+  for log in ${LOG_LIST}
+  do
+    if [ $lines -gt 0 ]; then
+      cat $log | tail --lines=+${start} | head --lines=${lines}
+    else
+      cat $log | tail --lines=+${start}
+    fi
+  done > ./tmp_fio_log
+
+  cat ./tmp_fio_log | \
   awk -F ',' "
           { t=int(\$1/1000/${PLOT_INTERVAL}); arr[t,int(\$3)]+=\$2; T[t] }
       END { for(time in T) printf(\"%d\t%d\t%d\n\",
