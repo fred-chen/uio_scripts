@@ -35,7 +35,8 @@ def usage(errmsg=""):
     print("%s [ -b|--boot ]" % (' '.rjust(just)))
     print("%s [ -u|--update ] [ --binonly (binpath|conf|tag|branch|commit) ]" % (' '.rjust(just)))
     print("%s [ -i|--init ]" % (' '.rjust(just)))
-    print("%s [ -p|--perftest ] [ --createluns num ] [ --fullmap ] [ --cpudata ] [ --fill sec ]" % (' '.rjust(just)))
+    print("%s [ -p|--perftest ] [ --cpudata ] [ --fill sec ]" % (' '.rjust(just)))
+    print("%s [ --createluns num ] [ --fullmap ] [ --deleteluns ]" % (' '.rjust(just)))
     print(
         "\n" "Coordinate UniIO nodes, build server and fio clients for performance test." "\n" 
         "\n" 
@@ -48,10 +49,10 @@ def usage(errmsg=""):
         "      --binonly:     use along with '-u', only update cio_array binary." "\n"
         "  -i, --init:        reinit uniio federation" "\n"
         "  -p, --perftest:    run perftest" "\n"
-        "      --createluns:  use along with '-p', create a given number of luns" "\n"
-        "      --fullmap:     use along with '-p', all clients see all luns ( clients see different luns if not specified )" "\n"
         "      --cpudata:     use along with '-p', collect cpu data as svg files while performance test is running" "\n"
         "      --fill:        use along with '-p', fill the luns with pure write workload for a given time in seconds" "\n"
+        "  --createluns:      create a given number of luns" "\n"
+        "     --fullmap:      use along with '--createluns', all clients see all luns ( clients see different luns if not specified )" "\n"
         "  --deleteluns:      delete all existing luns" "\n"
         )
     exit(1)
@@ -621,15 +622,14 @@ def fio_build_job_contents(client_target, fill=0):
             fio_job_content: content string for the fio job definition file
     """
     fio_job_content  = "[global]"
-    if not fill:
-        fio_job_content += "\n" "write_bw_log=xxx"   # later xxx will be replaced by runfio.sh
-        fio_job_content += "\n" "write_lat_log=xxx"  # later xxx will be replaced by runfio.sh
-        fio_job_content += "\n" "write_iops_log=xxx" # later xxx will be replaced by runfio.sh
-        fio_job_content += "\n" "log_avg_msec=10000" 
+    fio_job_content += "\n" "write_bw_log=xxx"   # later xxx will be replaced by runfio.sh
+    fio_job_content += "\n" "write_lat_log=xxx"  # later xxx will be replaced by runfio.sh
+    fio_job_content += "\n" "write_iops_log=xxx" # later xxx will be replaced by runfio.sh
+    fio_job_content += "\n" "log_avg_msec=10000" 
     fio_job_content += "\n" "ioengine=libaio" 
     fio_job_content += "\n" "direct=1" 
     fio_job_content += "\n" "sync=1" 
-    fio_job_content += "\n" "bs=4k" 
+    fio_job_content += "\n" "bs=4k"
     dist = g_conf["fio_random_distribution"] if g_conf.has_key("fio_random_distribution") else "random"
     fio_job_content += "\n" "random_distribution=%s" % (dist)
     
@@ -905,9 +905,12 @@ if __name__ == "__main__":
     if g_init:
         if not init_cluster(federation_targets, force=True): exit(1)
     
+    if g_createluns:
+        if not create_luns(client_targets, federation_targets, g_createluns): exit(1)
+        
     if g_perftest:
-        if g_init or g_update or g_createluns:
-            if not create_luns(client_targets, federation_targets, g_createluns): exit(1)
+        if (g_init or g_update) and (not g_createluns):
+            if not create_luns(client_targets, federation_targets, 0): exit(1)
         if not perf_test(client_targets, federation_targets, g_fill): exit(1)
     
     common.log("DONE.")
