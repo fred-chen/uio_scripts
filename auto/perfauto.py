@@ -17,6 +17,7 @@ g_force = False
 g_shutdown_only = False
 g_boot_only = False
 g_update = False
+g_ref = None
 g_binonly = None
 g_init = False
 g_perftest = False
@@ -33,7 +34,7 @@ def usage(errmsg=""):
     print("usage: %s [ -c|--config configfile.json ]" % (os.path.basename(sys.argv[0])))
     print("%s [ -f|--force ] [ -s|--shutdown ]" % (' '.rjust(just)))
     print("%s [ -b|--boot ]" % (' '.rjust(just)))
-    print("%s [ -u|--update ] [ --binonly (binpath|conf|tag|branch|commit) ]" % (' '.rjust(just)))
+    print("%s [ -u|--update ] [ --ref tag|branch|commit ] [ --binonly binpath|conf ]" % (' '.rjust(just)))
     print("%s [ -i|--init ]" % (' '.rjust(just)))
     print("%s [ -p|--perftest ] [ --cpudata ] [ --fill sec ]" % (' '.rjust(just)))
     print("%s [ --createluns num ] [ --fullmap ] [ --deleteluns ]" % (' '.rjust(just)))
@@ -46,6 +47,7 @@ def usage(errmsg=""):
         "  -s, --shutdown:    gracefully stop uniio nodes" "\n"
         "  -b, --boot:        start uniio nodes" "\n"
         "  -u, --update:      update uniio build" "\n"
+        "      --ref:         use along with '-u', checkout a given git reference." "\n"
         "      --binonly:     use along with '-u', only update cio_array binary." "\n"
         "  -i, --init:        reinit uniio federation" "\n"
         "  -p, --perftest:    run perftest" "\n"
@@ -58,10 +60,10 @@ def usage(errmsg=""):
     exit(1)
 
 def handleopts():
-    global g_conf, g_runtime_dir, g_force, g_shutdown_only, g_boot_only, g_update, g_init, g_perftest, g_binonly, g_fullmap, g_cpudata, g_fill, g_createluns, g_delluns_only
+    global g_conf, g_runtime_dir, g_force, g_shutdown_only, g_boot_only, g_update, g_init, g_perftest, g_binonly, g_fullmap, g_cpudata, g_fill, g_createluns, g_delluns_only, g_ref
     conf_file = "%s/auto.json" % (os.path.dirname(os.path.realpath(__file__)))
     try:
-        options, args = getopt.gnu_getopt(sys.argv[1:], "hc:fsbuipd", ["help", "configfile=","force","shutdown","boot","update","init","perftest", "binonly=", "fullmap", "cpudata", "fill=", "createluns=","deleteluns"])
+        options, args = getopt.gnu_getopt(sys.argv[1:], "hc:fsbuipd", ["help", "configfile=","force","shutdown","boot","update","init","perftest", "binonly=", "fullmap", "cpudata", "fill=", "createluns=","deleteluns", "ref="])
     except getopt.GetoptError as err:
         usage(err)
     for o, a in options:
@@ -77,6 +79,8 @@ def handleopts():
             g_boot_only = True
         if(o in ('-u', '--update')):
             g_update = True
+        if(o in ('', '--ref')):
+            g_ref = a
         if(o in ('', '--binonly')):
             g_binonly = a
         if(o in ('-i', '--init')):
@@ -107,9 +111,12 @@ def handleopts():
     if not conf:
         common.log("can not parse configuration file '%s'." % conf_file, 1)
         return None
+    
     g_runtime_dir = conf["runtime_dir"]
-    if g_binonly and (g_binonly != 'conf'):
-        conf["uniio_checkout"] = g_binonly   # a git commit to checkout
+    if g_ref:
+        conf["uniio_checkout"] = g_ref   # a git commit to checkout
+    if g_binonly and g_binonly != 'conf' and (not me.is_command_executable(g_binonly)):
+        usage("%s does not exist or not executable." % (g_binonly))
     g_conf = conf
     return conf
 
@@ -220,13 +227,13 @@ def build(build_server):
 
     # make repos
     cos = []
-    co = sh0.exe("cd %s/%s/build && make -j20 package" % (g_runtime_dir, "uniio"), wait=False)
+    co = sh0.exe("cd %s/%s/build && rm -f *.rpm && make -j20 package" % (g_runtime_dir, "uniio"), wait=False)
     cos.append(co)
-    co = sh1.exe("cd %s/%s/build && make -j20 package" % (g_runtime_dir, "sysmgmt"), wait=False)
+    co = sh1.exe("cd %s/%s/build && rm -f *.rpm && make -j20 package" % (g_runtime_dir, "sysmgmt"), wait=False)
     cos.append(co)
-    co = sh2.exe("cd %s/%s/build && make -j20 package" % (g_runtime_dir, "nasmgmt"), wait=False)
+    co = sh2.exe("cd %s/%s/build && rm -f *.rpm && make -j20 package" % (g_runtime_dir, "nasmgmt"), wait=False)
     cos.append(co)
-    co = sh3.exe("cd %s/%s/build_debug && make -j20 package" % (g_runtime_dir, "uniio-ui"), wait=False)
+    co = sh3.exe("cd %s/%s/build_debug && rm -f *.rpm && make -j20 package" % (g_runtime_dir, "uniio-ui"), wait=False)
     cos.append(co)
     for co in cos:
         if not co.succ():
@@ -865,7 +872,7 @@ def perf_test(client_targets, federation_targets, fill=0):
     localtime = time.localtime()
     date_str = "%d-%02d-%02d" % (localtime.tm_year, localtime.tm_mon, localtime.tm_mday)
     time_str = "%02d.%02d.%02d" % (localtime.tm_hour, localtime.tm_min, localtime.tm_sec)
-    logdir = "./perflogs/%s/%s.%s_%s%s" % (date_str, jobdesc, date_str, time_str, status_str)
+    logdir = "perflogs/%s/%s.%s_%s%s" % (date_str, jobdesc, date_str, time_str, status_str)
     me.exe("rm -rf %s" % (logdir))
     me.exe("mkdir -p %s" % (logdir))
     if not fio_driver.download(logdir, "%s/*" % (fio_job_dir)):
