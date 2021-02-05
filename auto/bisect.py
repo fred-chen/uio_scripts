@@ -6,7 +6,7 @@ a script automatically finds out which commit causes the performance regression
 @author: fred
 '''
 
-import sys, os, getopt, json, random
+import sys, os, getopt, json, uuid
 sys.path.append('%s/../cctf' % (os.path.dirname(os.path.realpath(__file__))))
 from cctf import gettarget, me
 
@@ -93,8 +93,13 @@ def get_clist(build_server):
     cmd = "[[ -e '%s/%s' ]] && { cd %s/%s && git fetch; } || { %s clone --recurse-submodules git@github.com:uniio/%s.git %s/%s; }" \
             % (g_runtime_dir, repo, g_runtime_dir, repo, gitcmd, repo, g_runtime_dir, repo)
     if not sh.exe(cmd).succ(): return None
-
-    clst = sh.exe("cd %s/%s && %s log --all --pretty=format:'%%h|%%ci|%%an|%%s'" % (g_runtime_dir, repo, gitcmd), log=False).getlist()
+    
+    if checkout != "default": # checkout desired branch or tag or commit
+        cmd = "cd %s/%s && %s checkout %s" % (g_runtime_dir, repo, gitcmd, checkout)
+        sh.exe(cmd)
+    cmd = "cd %s/%s && %s pull --no-edit || true" % (g_runtime_dir, repo, gitcmd)
+    sh.exe(cmd)
+    clst = sh.exe("cd %s/%s && %s log --pretty=format:'%%h|%%ci|%%an|%%s'" % (g_runtime_dir, repo, gitcmd), log=False).getlist()
     clist = []
     for c in clst:
         clist.append(c.split("|"))
@@ -111,7 +116,7 @@ def get_iops(logpath):
         iops = int(iops_str.split("@")[0]) if iops_str else None
     return iops, iops_str, path_results
 
-def bisect(clist, comp_iops, narrow=3):
+def bisect(clist, comp_iops, narrow=3, runlast=False):
     '''
           every run it will checkout the ** MIDDLE ** commit in the list
           then build and replace, then run the test
@@ -127,10 +132,12 @@ def bisect(clist, comp_iops, narrow=3):
     results = []
     if not clist or len(clist) <= narrow: 
         return results
-
-    idx = len(clist) / 2
+    if not runlast:
+        idx = len(clist) / 2
+    else:
+        idx = len(clist) - 1  # run the last commit for the first round
     hash = clist[idx][0]
-    logpath = "{0}.out".format(hash)
+    logpath = "{0}.{1}.out".format(hash, str(uuid.uuid1()))
     sys.stdout.write( "testing {0} log: {1}".format( "|".join(clist[idx]), logpath ) ); sys.stdout.flush()
 
     cmd = "{0} -c {1} -u --ref={2} -p --fill 600 --fullmap > {3} ".format(path_perfauto, g_conf_file, hash, logpath)
@@ -152,7 +159,7 @@ def bisect(clist, comp_iops, narrow=3):
     else:   # can't get iops for this round, retry with the closest commits
         results.append([ hash, -1 ])
         lst = clist[:-1]
-    return results.append(bisect(lst, comp_iops, narrow))
+    return results.append(bisect(lst, comp_iops, narrow, runlast=False))
     
 if __name__ == "__main__":
     if not handleopts(): exit(1)
@@ -177,11 +184,35 @@ if __name__ == "__main__":
     else:
         min, max = idx1, idx2
     clist = clist[min:max+1]
-    top_commit = clist[min][0]; bottom_commit = clist[max][0]
+    top_commit = clist[0][0]; bottom_commit = clist[max-min][0]
 
-    print ("top_commit=%s, bottom_commit=%s, num_commits=%d, compare_iops=%d, narrow_down=%d" % (top_commit, bottom_commit, len(clist), g_kiops*1000, g_narrow))
-    results = bisect(clist, g_kiops * 1000, g_narrow)
+    print ("bisect: top_commit=%s, bottom_commit=%s, num_commits=%d, compare_iops=%d, narrow_down=%d" % (top_commit, bottom_commit, len(clist), g_kiops*1000, g_narrow))
+    print ("-" * 80)
+    results = bisect(clist, g_kiops * 1000, g_narrow, runlast=True) # [ [hash, iops], ... ]
+    results.reverse()
+    c1 = ""; c2 = ""
+    for r in results:
+        hash = r[0]
+        iops = r[1]
+        if iops > g_kiops*1000:
+            if not c1: c1 = hash  # the most recent commit that achieves performance goal
+        else:
+            if not c2: c2 = hash  # the most recent commit that fails performance goal
+    for i in range(len(clist)):
+        hash = clist[i][0]
+        if hash == c1:
+            idx1 = i
+        if hash == c2:
+            idx2 = i
+    if idx1 > idx2:
+        min, max = idx2, idx1
+    else:
+        min, max = idx1, idx2
 
-
+    clist = clist[min:max+1]
+    print ("the problematic commit might be in:")
+    for c in clist:
+        print ("|".join(c))
+        
 
 

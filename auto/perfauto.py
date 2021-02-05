@@ -867,6 +867,7 @@ def perf_test(client_targets, federation_targets, fill=0):
         if not co.succ():
             counter_fail = co
     if counter_fail: status_str += ".COUNTER_FAIL_on_%s" % (counter_fail.shell.t.address)
+    iscsi_out(client_targets)
 
     # download fio logs from fio driver node
     localtime = time.localtime()

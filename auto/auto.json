@@ -13,7 +13,7 @@
 
     "build_server" : ["192.168.100.120", "root", ".id_rsa", "/root/fred/.id_rsa"],
     "build_server_git_proxy" : "socks5://192.168.100.120:8899",
-    "uniio_checkout" : "object_array",
+    "uniio_checkout" : "v2.0_x64",
     
     "num_luns" : 18,
     "lunsize_G" : 500,

@@ -54,10 +54,10 @@ function init() {
   # discard ssd
   for d in ${!devices[@]}
   do
+    # Discard the content of sectors on a device.
     wipefs -f -a ${d}  > /dev/null 2>&1
     dd if=/dev/zero of=${d} bs=1M count=16 > /dev/null 2>&1
-    # Discard the content of sectors on a device.
-    # blkdiscard ${d} &
+
     # make partitions for index swap, user data, and coredump device
     sz_b=`blockdev --getsize64 ${d}` && sz_k=`expr ${sz_b} / 1024`
     sz_k_reserved=`echo - | awk "{ print ${sz_k} * ${ratio} }"` && sz_k_reserved=`printf "%.0f" ${sz_k_reserved}`
