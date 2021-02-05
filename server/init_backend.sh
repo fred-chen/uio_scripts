@@ -51,23 +51,23 @@ function init() {
 
   ratio=`echo - | awk "{ print ${CORE_SIZE_G} * 1024 * 1024 / ${capacity_k} }"`
 
-  # make partitions for index swap, user data, and coredump device
+  # discard ssd
   for d in ${!devices[@]}
   do
+    wipefs -f -a ${d}  > /dev/null 2>&1
+    dd if=/dev/zero of=${d} bs=1M count=16 > /dev/null 2>&1
+    # Discard the content of sectors on a device.
+    # blkdiscard ${d} &
+    # make partitions for index swap, user data, and coredump device
     sz_b=`blockdev --getsize64 ${d}` && sz_k=`expr ${sz_b} / 1024`
     sz_k_reserved=`echo - | awk "{ print ${sz_k} * ${ratio} }"` && sz_k_reserved=`printf "%.0f" ${sz_k_reserved}`
     offset_G_data=$((($sz_k - $sz_k_reserved) / 1024 / 1024))
     echo $sz_k, $offset_G_data, $sz_k_reserved
-
-    wipefs -f -a ${d}  > /dev/null 2>&1
-    dd if=/dev/zero of=${d} bs=1M count=16 > /dev/null 2>&1
-
     parted -s ${d} mklabel gpt
     parted -s ${d} mkpart primary 0 2%
     parted -s ${d} mkpart primary 2% ${offset_G_data}GiB
     parted -s ${d} mkpart primary ${offset_G_data}GiB 100%
   done
-  echo "done."
 
   core_devs=
   # make a mdadm raid for coredump dev
