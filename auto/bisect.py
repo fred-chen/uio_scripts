@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 '''
-a script automatically finds out which commit slows down the performance
+a script automatically finds out which commit causes the performance regression
 
 @author: fred
 '''
