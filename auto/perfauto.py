@@ -34,7 +34,7 @@ def usage(errmsg=""):
     print("usage: %s [ -c|--config configfile.json ]" % (os.path.basename(sys.argv[0])))
     print("%s [ -f|--force ] [ -s|--shutdown ]" % (' '.rjust(just)))
     print("%s [ -b|--boot ]" % (' '.rjust(just)))
-    print("%s [ -u|--update ] [ --ref tag|branch|commit ] [ --binonly binpath|conf ]" % (' '.rjust(just)))
+    print("%s [ -u|--update ] [ --ref tag|branch|commit ] [ --binonly binpath|build ]" % (' '.rjust(just)))
     print("%s [ -i|--init ]" % (' '.rjust(just)))
     print("%s [ -p|--perftest ] [ --cpudata ] [ --fill sec ]" % (' '.rjust(just)))
     print("%s [ --createluns num ] [ --fullmap ] [ --deleteluns ]" % (' '.rjust(just)))
@@ -115,7 +115,7 @@ def handleopts():
     g_runtime_dir = conf["runtime_dir"]
     if g_ref:
         conf["uniio_checkout"] = g_ref   # a git commit to checkout
-    if g_binonly and g_binonly != 'conf' and (not me.is_command_executable(g_binonly)):
+    if g_binonly and g_binonly != 'build' and (not me.is_command_executable(g_binonly)):
         usage("%s does not exist or not executable." % (g_binonly))
     g_conf = conf
     return conf
