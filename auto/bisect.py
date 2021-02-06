@@ -16,6 +16,7 @@ g_runtime_dir = '/tmp'
 g_c1, g_c2 = "",""
 g_narrow = 3
 g_kiops = 300
+g_results = []
 
 def usage(errmsg=""):
     if(errmsg != ""):
@@ -99,7 +100,7 @@ def get_clist(build_server):
         sh.exe(cmd)
     cmd = "cd %s/%s && %s pull --no-edit || true" % (g_runtime_dir, repo, gitcmd)
     sh.exe(cmd)
-    clst = sh.exe("cd %s/%s && %s log --pretty=format:'%%h|%%ci|%%an|%%s'" % (g_runtime_dir, repo, gitcmd), log=False).getlist()
+    clst = sh.exe("cd %s/%s && %s --no-pager log --pretty=format:'%%h|%%ci|%%an|%%s'" % (g_runtime_dir, repo, gitcmd), log=False).getlist()
     clist = []
     for c in clst:
         clist.append(c.split("|"))
@@ -127,39 +128,46 @@ def bisect(clist, comp_iops, narrow=3, runlast=False):
             hash: the commit it chose to run
             iops: the total iops number corresponds to commit_info
     '''
+    global g_results
     path_perfauto = "{0}/perfauto.py".format(os.path.dirname(os.path.realpath(__file__)))
 
-    results = []
-    if not clist or len(clist) <= narrow: 
-        return results
+    print ("\n\nbisect: top_commit=%s, bottom_commit=%s, num_commits=%d, compare_iops=%d, narrow_down=%d" % (top_commit, bottom_commit, len(clist), g_kiops*1000, g_narrow))
+    print ("-" * 80)
+    if not clist or len(clist) <= narrow:
+        return []
     if not runlast:
         idx = len(clist) / 2
     else:
         idx = len(clist) - 1  # run the last commit for the first round
     hash = clist[idx][0]
     logpath = "{0}.{1}.out".format(hash, str(uuid.uuid1()))
-    sys.stdout.write( "testing {0} log: {1}".format( "|".join(clist[idx]), logpath ) ); sys.stdout.flush()
+    sys.stdout.write ( "testing {0} log: {1}\n".format( "|".join(clist[idx]), logpath ) ); sys.stdout.flush()
 
     cmd = "{0} -c {1} -u --ref={2} -p --fill 600 --fullmap > {3} ".format(path_perfauto, g_conf_file, hash, logpath)
     iops = None; path = None
     succ = me.succ(cmd)
     if not succ:  # execution fail
-        sys.stdout.write( "\r" + "FAIL!! {0} log: {1}\n".format( "|".join(clist[idx]), logpath ) )
+        sys.stdout.write( "  FAIL!! {0} log: {1}\n".format( "|".join(clist[idx]), logpath ) )
     else:
         iops, iops_str, path = get_iops(logpath)
-        sys.stdout.write( "\r" + "IOPS: {2} ref: {0} log: {1}\n".format( "|".join(clist[idx]), logpath, iops_str ) )
+        sys.stdout.write( "  IOPS: {2} ref: {0} log: {1}\n".format( "|".join(clist[idx]), logpath, iops_str ) )
         if os.path.exists(path):
             me.exe("mv {0} {1}/".format(logpath, path))
     if iops:
-        results.append([ hash, iops ])
+        result = [ hash, iops ]
+        g_results.append(result)
         if iops > comp_iops:  # goto left half in the list (for later commits)
             lst = clist[:idx]
         else:                 # goto right half in the list (for earlier commits)
             lst = clist[idx+1:]
     else:   # can't get iops for this round, retry with the closest commits
-        results.append([ hash, -1 ])
+        result = [ hash, -1 ]
+        g_results.append(result)
         lst = clist[:-1]
-    return results.append(bisect(lst, comp_iops, narrow, runlast=False))
+    if runlast:
+        lst = clist
+    result = bisect(lst, comp_iops, narrow, runlast=False)
+    return result
     
 if __name__ == "__main__":
     if not handleopts(): exit(1)
@@ -186,12 +194,10 @@ if __name__ == "__main__":
     clist = clist[min:max+1]
     top_commit = clist[0][0]; bottom_commit = clist[max-min][0]
 
-    print ("bisect: top_commit=%s, bottom_commit=%s, num_commits=%d, compare_iops=%d, narrow_down=%d" % (top_commit, bottom_commit, len(clist), g_kiops*1000, g_narrow))
-    print ("-" * 80)
-    results = bisect(clist, g_kiops * 1000, g_narrow, runlast=True) # [ [hash, iops], ... ]
-    results.reverse()
+    result = bisect(clist, g_kiops * 1000, g_narrow, runlast=True) # [ [hash, iops], ... ]
+    g_results.reverse()
     c1 = ""; c2 = ""
-    for r in results:
+    for r in g_results:
         hash = r[0]
         iops = r[1]
         if iops > g_kiops*1000:
