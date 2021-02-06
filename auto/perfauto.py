@@ -338,7 +338,7 @@ def attach_luns(federation_targets):
             return False
     return True
 
-def shutdown_cluster(federation_targets, force=True):
+def shutdown_cluster(federation_targets, force=True, wait=True):
     # shutdown cluster
     cos = []
     for t in federation_targets:
@@ -346,11 +346,14 @@ def shutdown_cluster(federation_targets, force=True):
             continue
         cmd  = "%s/uio_scripts/server/init_cluster.sh %s -s" % (g_runtime_dir, "-f" if force else "")
         cos.append(t.exe(cmd, wait=False))
-    for co in cos:
-        if not co.succ():
-            common.log("failed when shutting down uniio.")
-            return False
-    return True
+    if wait:
+        for co in cos:
+            if not co.succ():
+                common.log("failed when shutting down uniio.")
+                return False
+        return True
+    else:
+        return cos
 
 def replace_rpm(federation_targets, build_server, force=True):
     '''
@@ -362,8 +365,14 @@ def replace_rpm(federation_targets, build_server, force=True):
     if not federation_targets:
         common.log("failed replace rpms. uniio servers are None.", 1)
         return False
+    cos = shutdown_cluster(federation_targets, force, wait=False)
     if not build(build_server):
         return False
+    # wait for shutdown cluster
+    for co in cos:
+        if not co.succ():
+            common.log("failed when shutting down uniio.")
+            return False
 
     # download from build server and upload rpm packages to federation nodes:
     me.exe("rm -rf /tmp/rpms && mkdir /tmp/rpms")
@@ -397,11 +406,17 @@ def replace_bin(federation_targets, build_server, force=True):
         if the g_binonly is a local file, simply upload the file and replace '/opt/uniio/sbin/cio_array'
         if the g_binonly is not a local file, build the latest cio_array, cio_array.sym on build_server and replace binaries on federation nodes
     '''
+    cos = shutdown_cluster(federation_targets, force, wait=False)
     if not federation_targets:
         common.log("failed replace rpms. uniio servers are None.", 1)
         return False
 
     if me.is_path_executable(g_binonly): # use a local binary file to update the federation
+        # wait for shutdown cluster
+        for co in cos:
+            if not co.succ():
+                common.log("failed when shutting down uniio.")
+                return False
         for t in federation_targets:
             if not t.upload(g_binonly, "/opt/uniio/sbin/cio_array"):
                 return False
@@ -411,6 +426,11 @@ def replace_bin(federation_targets, build_server, force=True):
             return False
         if not build_bin(build_server):  # build and upload
             return False
+        # wait for shutdown cluster
+        for co in cos:
+            if not co.succ():
+                common.log("failed when shutting down uniio.")
+                return False
         # download from build server and upload rpm packages to federation nodes:
         if not build_server.download("/tmp/", "%s/uniio/build/cio_array" % (g_runtime_dir)):  # download cio_array cio_array.sym
             return False
@@ -460,8 +480,6 @@ def boot_cluster(federation_targets):
     return True
 
 def update_cluster(federation_targets, build_server, force=True):
-    if not shutdown_cluster(federation_targets, force):
-        return False
     if g_binonly:
         if not replace_bin(federation_targets, build_server, g_force):
             return False
