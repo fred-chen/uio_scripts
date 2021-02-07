@@ -139,6 +139,7 @@ def prep_targets():
             client_targets.append(t)
         else:
             client_targets = []
+            break
 
     federation_targets = []
     for n in federation_node_def:
@@ -147,6 +148,7 @@ def prep_targets():
             federation_targets.append(t)
         else:
             federation_targets = []
+            break
 
     build_server = None
     build_server = gettarget(build_node_def[0], username=build_node_def[1], password=build_node_def[2], svc="ssh", timeout=60)
@@ -154,11 +156,14 @@ def prep_targets():
         build_server = None
 
     # upload uio_scripts to targets
-    for t in client_targets + federation_targets:
-        if not t.exe("mkdir -p %s" % (g_runtime_dir)):
-            return None
-        if not t.upload("%s" % (g_rootdir), g_runtime_dir):
-            return None
+    if client_targets and federation_targets:
+        for t in client_targets + federation_targets:
+            if not t.exe("mkdir -p %s" % (g_runtime_dir)):
+                return None
+            if not t.upload("%s" % (g_rootdir), g_runtime_dir):
+                return None
+    else:
+        common.log("failed to connect to some of the nodes.")
 
     return (client_targets, federation_targets, build_server)
 
@@ -166,7 +171,7 @@ def get_gitcmd():
     git_proxy = "ALL_PROXY="+g_conf["build_server_git_proxy"] if g_conf.has_key("build_server_git_proxy") else ""
     return "%s git" % (git_proxy) if git_proxy else "git"
 
-def build(build_server):
+def build(build_server, wait=True):
     '''
         pull the latest uniio repos (uniio, sysmgmt, nasmgmt, uniio-ui) from github on build server
         build on server
@@ -180,7 +185,7 @@ def build(build_server):
     for i in range(4):  # use 4 shells for parallel compilation
         sh = build_server.newshell()
         if not sh: 
-            return False
+            return None
         shs.append(sh)
     for sh in shs:
         sh.exe("cd /tmp")
@@ -204,7 +209,7 @@ def build(build_server):
     for co in cos:
         if not co.succ():
             common.log("failed git command: '%s'" % (co.cmdline), 1)
-            return False
+            return None
 
     sh0 = shs[0]
     sh1 = shs[1]
@@ -223,7 +228,7 @@ def build(build_server):
     for co in cos:
         if not co.succ():
             common.log("failed cmake command: '%s'" % (co.cmdline), 1)
-            return False
+            return None
 
     # make repos
     cos = []
@@ -235,13 +240,16 @@ def build(build_server):
     cos.append(co)
     co = sh3.exe("cd %s/%s/build_debug && rm -f *.rpm && make -j20 package" % (g_runtime_dir, "uniio-ui"), wait=False)
     cos.append(co)
-    for co in cos:
-        if not co.succ():
-            common.log("failed make command: '%s'" % (co.cmdline), 1)
-            return False
-    return True
+    if wait:
+        for co in cos:
+            if not co.succ():
+                common.log("failed make command: '%s'" % (co.cmdline), 1)
+                return None
+        return cos
+    else:
+        return cos
 
-def build_bin(build_server):
+def build_bin(build_server, wait=True):
     '''
         pull the latest uniio repo from github on build server
         build cio_array and cio_array.sym on server
@@ -275,9 +283,16 @@ def build_bin(build_server):
         return False
 
     # make repos
-    if not sh.exe("cd %s/%s/build && make -j20 cio_array cio_array.sym" % (g_runtime_dir, repo)).succ():
-        return False
-    return True
+    cos = []
+    cos.append( sh.exe("cd %s/%s/build && make -j20 cio_array cio_array.sym" % (g_runtime_dir, repo), wait=False) )
+    if wait:
+        for co in cos:
+            if not co.succ():
+                common.log("failed make command: '%s'" % (co.cmdline), 1)
+                return None
+        return cos
+    else:
+        return cos
 
 def cio_running(federation_target):
     '''
@@ -365,13 +380,27 @@ def replace_rpm(federation_targets, build_server, force=True):
     if not federation_targets:
         common.log("failed replace rpms. uniio servers are None.", 1)
         return False
-    cos = shutdown_cluster(federation_targets, force, wait=False)
-    if not build(build_server):
+    cos_discard = discard_drives(federation_targets, wait=False)
+    cos_build = build(build_server, wait=False)
+    if not cos_build:
         return False
-    # wait for shutdown cluster
-    for co in cos:
+    # wait for discard jobs to end
+    for co in cos_discard:
         if not co.succ():
-            common.log("failed when shutting down uniio.")
+            common.log("failed when discard backend drives.")
+            return False
+    # reboot all federation targets after discard
+    for t in federation_targets:
+        t.reboot(wait=False)
+    # reinitialize backend
+    for t in federation_targets:
+        t.wait_alive()
+    if not init_backend(federation_targets, force=True, wait=True):
+        return False
+    # wait for build job to end
+    for co in cos_build:
+        if not co.succ():
+            common.log("failed when discard backend drives.")
             return False
 
     # download from build server and upload rpm packages to federation nodes:
@@ -406,16 +435,16 @@ def replace_bin(federation_targets, build_server, force=True):
         if the g_binonly is a local file, simply upload the file and replace '/opt/uniio/sbin/cio_array'
         if the g_binonly is not a local file, build the latest cio_array, cio_array.sym on build_server and replace binaries on federation nodes
     '''
-    cos = shutdown_cluster(federation_targets, force, wait=False)
     if not federation_targets:
         common.log("failed replace rpms. uniio servers are None.", 1)
         return False
 
+    cos_discard = discard_drives(federation_targets, wait=False)
     if me.is_path_executable(g_binonly): # use a local binary file to update the federation
-        # wait for shutdown cluster
-        for co in cos:
+        # wait for backend gets reinitialized
+        for co in cos_discard:
             if not co.succ():
-                common.log("failed when shutting down uniio.")
+                common.log("failed when discarding backend drives.")
                 return False
         for t in federation_targets:
             if not t.upload(g_binonly, "/opt/uniio/sbin/cio_array"):
@@ -424,13 +453,21 @@ def replace_bin(federation_targets, build_server, force=True):
         if not build_server:
             common.log("failed replace rpms. build server is None.", 1)
             return False
-        if not build_bin(build_server):  # build and upload
+        cos_build = build_bin(build_server, wait=False)
+        if not cos_build:
             return False
-        # wait for shutdown cluster
-        for co in cos:
+        # wait for backend gets discarded
+        for co in cos_discard:
             if not co.succ():
-                common.log("failed when shutting down uniio.")
+                common.log("failed when discarding backend drives.")
                 return False
+        for t in federation_targets: # reboot after discard disks
+            t.reboot(wait=False)
+        for t in federation_targets: # reboot after discard disks
+            t.wait_alive()
+        if not init_backend(federation_targets, force=True, wait=True):
+            return False
+
         # download from build server and upload rpm packages to federation nodes:
         if not build_server.download("/tmp/", "%s/uniio/build/cio_array" % (g_runtime_dir)):  # download cio_array cio_array.sym
             return False
@@ -467,6 +504,38 @@ def init_cluster(federation_targets, force=True):
         return False
     return True
 
+def discard_drives(federation_targets, wait=True):
+    cos = []
+    for t in federation_targets:
+        cos.append(t.exe("while read d; do wipefs -f -a \${d}; dd if=/dev/zero of=\${d} bs=1M count=16; blkdiscard \${d} & done < <(lsblk -lpn -o NAME | grep -w 'sd.' | grep -v $(mount | grep -w / | awk '{print $1}' | sed 's/[0-9]//g')) && wait", wait=wait))
+    if wait:
+        for co in cos:
+            if not co.succ():
+                common.log("failed when discarding drives.")
+                return None
+            else:
+                return cos
+    else:
+        return cos
+
+def init_backend(federation_targets, force=True, wait=True):
+    if not federation_targets:
+        common.log("federation nodes are None.")
+        return False
+    cos = []
+    for t in federation_targets:
+        cmd  = "%s/uio_scripts/server/init_cluster.sh -d %s" % (g_runtime_dir, "-f" if force else "")
+        cos.append(t.exe(cmd, wait=False))
+    if wait:
+        for co in cos:
+            if not co.succ():
+                common.log("failed when initializing uniio.")
+                return None
+            else:
+                return cos
+    else:
+        return cos
+
 def boot_cluster(federation_targets):
     # start objmgr and objmgr-fab on all uniio nodes
     cos = []
@@ -481,10 +550,10 @@ def boot_cluster(federation_targets):
 
 def update_cluster(federation_targets, build_server, force=True):
     if g_binonly:
-        if not replace_bin(federation_targets, build_server, g_force):
+        if not replace_bin(federation_targets, build_server, True):
             return False
     else:
-        if not replace_rpm(federation_targets, build_server, g_force):
+        if not replace_rpm(federation_targets, build_server, True):
             return False
     if not init_cluster(federation_targets):
         return False
@@ -940,5 +1009,6 @@ if __name__ == "__main__":
             if not create_luns(client_targets, federation_targets, 0): exit(1)
         if not perf_test(client_targets, federation_targets, g_fill): exit(1)
     
+    # discard_drives(federation_targets)
     common.log("DONE.")
     exit(0)

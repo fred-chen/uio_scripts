@@ -7,17 +7,17 @@
 #   push topology and create luns
 # Maintainer: Fred Chen
 
-REPLACE=false       # default rpm packages
-INIT_BACKEND=false  # no init backend by default
-INIT_ARRAY=false
+REPLACE="false"       # default rpm packages
+INIT_BACKEND="false"  # no init backend by default
+INIT_ARRAY="false"
 TOPOLOGY="192.168.101.169,192.168.103.248,192.168.100.206"
 MANAGEMENT_IP="192.168.103.253"
 ISCSI_IP="192.168.60.253"
-STOP_ONLY=false
-FORCE=false
-BOOT_ONLY=false
-CREATE_LUNS=false
-ATTACH_LUNS=false
+STOP_ONLY="false"
+FORCE="false"
+BOOT_ONLY="false"
+CREATE_LUNS="false"
+ATTACH_LUNS="false"
 RPMDIR=
 CORE_DEV_SIZE_G=300
 NUM_LUNS=18
@@ -59,12 +59,12 @@ handleopts() {
               [[ -z "$2" ]] && RPMDIR="./rpm" || RPMDIR=$2
               shift 2
               ;;
-            -d | --initbackend ) INIT_BACKEND=true; shift 1;;
-            -i | --initarray ) INIT_ARRAY=true; shift 1;;
-            -s | --stoponly ) STOP_ONLY=true; shift 1;;
-            -b | --bootonly ) BOOT_ONLY=true; shift 1;;
-            -c | --createluns ) CREATE_LUNS=true; NUM_LUNS=$2; shift 2;;
-            -a | --attachluns ) ATTACH_LUNS=true; shift 1;;
+            -d | --initbackend ) INIT_BACKEND="true"; shift 1;;
+            -i | --initarray ) INIT_ARRAY="true"; shift 1;;
+            -s | --stoponly ) STOP_ONLY="true"; shift 1;;
+            -b | --bootonly ) BOOT_ONLY="true"; shift 1;;
+            -c | --createluns ) CREATE_LUNS="true"; NUM_LUNS=$2; shift 2;;
+            -a | --attachluns ) ATTACH_LUNS="true"; shift 1;;
             --management_ip ) MANAGEMENT_IP=$2; shift 2;;
             --iscsi_ip ) ISCSI_IP=$2; shift 2;;
             --topology ) TOPOLOGY=$2; shift 2;;
@@ -187,7 +187,7 @@ init_backend() {
   echo "done"
 }
 init_array() {
-  uninit_array && init_backend || return 1
+  uninit_array || return 1
   echo -n "initializing array... "
   /opt/uniio/sbin/objmgr init > /dev/null 2>&1 || { echo "failed 'objmgr init'" && return 1; }
   echo "done."
@@ -196,13 +196,13 @@ init_array() {
 main() {
   handleopts "$@"
   echo "INIT_BACKEND=$INIT_BACKEND", "REPLACE=$REPLACE", "RPMDIR=$RPMDIR", "FORCE=$FORCE", "STOP_ONLY=$STOP_ONLY", "BOOT_ONLY=$BOOT_ONLY"
-  [[ ${STOP_ONLY} == true ]] && stop_array && exit 0
-  [[ ${REPLACE} == true ]] && stop_array && replace_rpm
-  [[ ${BOOT_ONLY} == true ]] && start_array && exit 0
-  [[ ${INIT_BACKEND} == true ]] && uninit_array && init_backend
-  [[ ${INIT_ARRAY} == true ]] && init_array && start_array
-  [[ ${CREATE_LUNS} == true ]] && { push_topology; create_luns; }
-  [[ ${ATTACH_LUNS} == true ]] && { push_topology; attach_luns; }
+  [[ ${STOP_ONLY} == "true" ]] && stop_array && exit 0
+  [[ ${REPLACE} == "true" ]] && stop_array && replace_rpm
+  [[ ${BOOT_ONLY} == "true" ]] && start_array && exit 0
+  [[ ${INIT_BACKEND} == "true" ]] && uninit_array && init_backend || return 1
+  [[ ${INIT_ARRAY} == "true" ]] && init_array && start_array || return 1
+  [[ ${CREATE_LUNS} == "true" ]] && { push_topology; create_luns; }
+  [[ ${ATTACH_LUNS} == "true" ]] && { push_topology; attach_luns; }
 
   return 0
 }
