@@ -78,7 +78,6 @@ function init() {
     parted -s ${d} mkpart primary 0 2%
     parted -s ${d} mkpart primary 2% ${offset_G_data}GiB
     parted -s ${d} mkpart primary ${offset_G_data}GiB 100%
-    fi
   done
 
   core_devs=
