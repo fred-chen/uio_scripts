@@ -20,6 +20,7 @@ CREATE_LUNS="false"
 ATTACH_LUNS="false"
 RPMDIR=
 CORE_DEV_SIZE_G=300
+DEV_SIZE_G=480
 NUM_LUNS=18
 
 usage() {
@@ -38,6 +39,7 @@ usage() {
   echo " -r: replace rpm packages"
   echo " -b: start objmgr and objmgr-fab"
   echo " -d: initialize backend"
+  echo " -S: size of disks"
   echo " -G: prereserve size for coredump device"
   echo " -i: initialize array"
   echo " -c: create new luns and mappings"
@@ -48,7 +50,7 @@ usage() {
   exit 1
 }
 handleopts() {
-    OPTS=`getopt -o r::dsfhbic::G:a -l replace::,initbackend,stoponly,initarray,createluns::,management_ip:,iscsi_ip:,topology:attachluns -- "$@"`
+    OPTS=`getopt -o r::dsfhbic::G:aS: -l replace::,initbackend,stoponly,initarray,createluns::,management_ip:,iscsi_ip:,topology:attachluns -- "$@"`
     [[ $? -eq 0 ]] || usage
 
     eval set -- "$OPTS"
@@ -70,6 +72,7 @@ handleopts() {
             --topology ) TOPOLOGY=$2; shift 2;;
             -f ) FORCE=true; shift 1;;
             -G ) CORE_DEV_SIZE_G=$2; shift 2;;
+            -S ) DEV_SIZE_G=$2; shift 2;;
             -h ) shift 1 && usage;;
             --) shift; break;;
         esac
@@ -183,7 +186,7 @@ uninit_array() {
 init_backend() {
   echo -n "initializing backend ..."
   SCRIPT_PATH=$(dirname $0)
-  ${SCRIPT_PATH}/init_backend.sh init -G $CORE_DEV_SIZE_G > /dev/null 2>&1 || { echo "failed init backend." && return 1; }
+  ${SCRIPT_PATH}/init_backend.sh init -G $CORE_DEV_SIZE_G -S $DEV_SIZE_G > /dev/null 2>&1 || { echo "failed init backend." && return 1; }
   echo "done"
 }
 init_array() {
@@ -199,8 +202,8 @@ main() {
   [[ ${STOP_ONLY} == "true" ]] && stop_array && exit 0
   [[ ${REPLACE} == "true" ]] && stop_array && replace_rpm
   [[ ${BOOT_ONLY} == "true" ]] && start_array && exit 0
-  [[ ${INIT_BACKEND} == "true" ]] && uninit_array && init_backend || return 1
-  [[ ${INIT_ARRAY} == "true" ]] && init_array && start_array || return 1
+  [[ ${INIT_BACKEND} == "true" ]] && uninit_array && init_backend
+  [[ ${INIT_ARRAY} == "true" ]] && init_array && start_array
   [[ ${CREATE_LUNS} == "true" ]] && { push_topology; create_luns; }
   [[ ${ATTACH_LUNS} == "true" ]] && { push_topology; attach_luns; }
 
