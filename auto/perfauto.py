@@ -279,7 +279,7 @@ def build_bin(build_server, wait=True):
     cos.append(sh.exe("cd %s/%s && mkdir -p build && cd build && cmake3 -DCMAKE_BUILD_TYPE=Release .." % (g_runtime_dir, repo), wait=False))
 
     # make repos
-    cos.append( sh.exe("cd %s/%s/build && make -j20 cio_array cio_array.sym" % (g_runtime_dir, repo), wait=False) )
+    cos.append( sh.exe("cd %s/%s/build && make -j20 cio_array cio_array.sym ioperftest" % (g_runtime_dir, repo), wait=False) )
     if wait:
         for co in cos:
             if not co.succ():
@@ -449,15 +449,14 @@ def replace_bin(federation_targets, build_server, force=True):
                 return False
 
         # download from build server and upload rpm packages to federation nodes:
-        if not build_server.download("/tmp/", "%s/uniio/build/cio_array" % (g_runtime_dir)):  # download cio_array cio_array.sym
-            return False
-        if not build_server.download("/tmp/", "%s/uniio/build/cio_array.sym" % (g_runtime_dir)):  # download cio_array cio_array.sym
-            return False
+        bins = ('cio_array', 'cio_array.sym', 'ioperftest')
+        for bin in bins:
+            if not build_server.download("/tmp/", "%s/uniio/build/%s" % (g_runtime_dir, bin)):
+                return False
         for t in federation_targets:
-            if not t.upload("/tmp/cio_array", "/opt/uniio/sbin/"):
-                return False
-            if not t.upload("/tmp/cio_array.sym", "/opt/uniio/sbin/"):
-                return False
+            for bin in bins:
+                if not t.upload("/tmp/%s" % (bin), "/opt/uniio/sbin/"):
+                    return False
     return True
 
 def init_cluster(federation_targets, force=True):
@@ -530,6 +529,8 @@ def boot_cluster(federation_targets):
         if not co.succ():
             common.log("failed when starting uniio.")
             return False
+    if not attach_luns(federation_targets):
+        return False
     return True
 
 def update_cluster(federation_targets, build_server, force=True):
@@ -858,7 +859,7 @@ def fio_run(client_targets, fill=0):
 
     # run 'client/runfio.sh' on the fio driver node
     sh_fio = fio_driver.newshell()
-    if not sh_fio.exe("cd %s" % (fio_job_dir)):
+    if not sh_fio.exe("cd %s && rm -rf fio_log/* && rm -rf fio_output/*" % (fio_job_dir)):
         return None, None, None, None
     clients=""
     for t in client_targets:
