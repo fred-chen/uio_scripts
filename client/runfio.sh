@@ -90,8 +90,8 @@ main() {
           [[ ! -z "$nj" ]] && sed -i "s/numjobs=[0-9]\+/numjobs=${nj}/g" $jobfn
           [[ ! -z "$runtime" ]] && sed -i "s/runtime=[0-9]\+/runtime=${runtime}/g" $jobfn
           [[ ! -z "$logfn" ]] && sed -i "s|write_bw_log=.\+|write_bw_log=${logfn}|g" $jobfn &&
-                                sed -i "s|write_lat_log=.\+|write_lat_log=${logfn}|g" $jobfn &&
-                                sed -i "s|write_iops_log=.\+|write_iops_log=${logfn}|g" $jobfn
+                                 sed -i "s|write_lat_log=.\+|write_lat_log=${logfn}|g" $jobfn &&
+                                 sed -i "s|write_iops_log=.\+|write_iops_log=${logfn}|g" $jobfn
 
           [[ ! -z "$duprate" ]] && sed -i "s|dedupe_percentage=.\+|dedupe_percentage=${duprate}|g" $jobfn
           [[ ! -z "$comprate" ]] && sed -i "s|buffer_compress_percentage=.\+|buffer_compress_percentage=${comprate}|g" $jobfn
@@ -109,30 +109,3 @@ main() {
 }
 
 main "$@"
-
-# rm -fr $outputdir
-# for qd in $qds
-# do
-#   for nj in $njobs
-#   do
-#     client_args=""
-#     jsonfn=$outputdir/json.qd$qd.njobs$nj.$jobtype
-#     logfn=$logdir/$jobtype.qd$qd.njobs$nj
-#     for client in $clients
-#     do
-#       jobfn=${jobtype}_$client.fio
-#       sed -i "s/iodepth=[0-9]\+/iodepth=${qd}/g" $jobfn &&
-#       sed -i "s/numjobs=[0-9]\+/numjobs=${nj}/g" $jobfn &&
-#       sed -i "s/runtime=[0-9]\+/runtime=${runtime}/g" $jobfn &&
-#       sed -i "s|write_bw_log=.\+|write_bw_log=${logfn}|g" $jobfn &&
-#       sed -i "s|write_lat_log=.\+|write_lat_log=${logfn}|g" $jobfn &&
-#       sed -i "s|write_iops_log=.\+|write_iops_log=${logfn}|g" $jobfn
-
-#       client_args="$client_args --client $client $jobfn"
-#     done
-#     args="--output=$jsonfn --output-format=json"
-#     echo "starting ${jobtype} iodepth=$qd njobs=$nj ..."
-#     fio $args $client_args
-#   done
-# done
-# exit 0
