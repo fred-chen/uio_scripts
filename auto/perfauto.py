@@ -216,10 +216,6 @@ def build(build_server, wait=True):
         cmd = "cd %s/%s && %s log --pretty=format:'%%h|%%ci|%%an|%%s' | head -8 || true" % (g_runtime_dir, repo, gitcmd)
         cos.append( shs[i].exe(cmd, wait=False) )
         i += 1
-    # for co in cos:
-    #     if not co.succ():
-    #         common.log("failed git command: '%s'" % (co.cmdline), 1)
-    #         return None
 
     # cmake repos
     co = sh0.exe("cd %s/%s && mkdir -p build && cd build && cmake3 -DCMAKE_BUILD_TYPE=Release .." % (g_runtime_dir, "uniio"), wait=False)
@@ -230,10 +226,6 @@ def build(build_server, wait=True):
     cos.append(co)
     co = sh3.exe("cd %s/%s && mkdir -p build_debug && cd build_debug && cmake3 .." % (g_runtime_dir, "uniio-ui"), wait=False)
     cos.append(co)
-    # for co in cos:
-    #     if not co.succ():
-    #         common.log("failed cmake command: '%s'" % (co.cmdline), 1)
-    #         return None
 
     # make repos
     co = sh0.exe("cd %s/%s/build && rm -f *.rpm && make -j20 package" % (g_runtime_dir, "uniio"), wait=False)
