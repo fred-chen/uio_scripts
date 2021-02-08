@@ -180,7 +180,7 @@ uninit_array() {
   rmmod objblk > /dev/null 2>&1 || true
   rm -rf /opt/uniio/cio* > /dev/null 2>&1
   ndctl create-namespace --force --reconfig=namespace0.0 --mode=raw > /dev/null 2>&1 || { echo "failed ndctl create-namespace" && return 1; }
-  dd if=/dev/zero of=/dev/pmem0 bs=4k count=10000000 > /dev/null 2>&1
+  dd if=/dev/zero of=/dev/pmem0 bs=1M count=32768 > /dev/null 2>&1
   echo "done."
 }
 init_backend() {
