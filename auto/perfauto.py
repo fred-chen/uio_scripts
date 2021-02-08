@@ -188,8 +188,13 @@ def build(build_server, wait=True):
             return None
         shs.append(sh)
     for sh in shs:
-        sh.exe("cd /tmp")
-        sh.exe("export GIT_SSH_COMMAND=\"ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o IdentityFile=%s -o ProxyCommand='ssh -q -W %%h:%%p evidence.orcadt.com'\"" % (git_ssh_identityfile))
+        cos.append(sh.exe("cd /tmp", wait=False))
+        cos.append(sh.exe("export GIT_SSH_COMMAND=\"ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o IdentityFile=%s -o ProxyCommand='ssh -q -W %%h:%%p evidence.orcadt.com'\"" % (git_ssh_identityfile), wait=False))
+
+    sh0 = shs[0]
+    sh1 = shs[1]
+    sh2 = shs[2]
+    sh3 = shs[3]
     # git clone all repos in parallel
     repos = ('uniio', 'uniio-ui', 'sysmgmt', 'nasmgmt')
     i = 0
@@ -197,26 +202,21 @@ def build(build_server, wait=True):
         checkout = g_conf["%s_checkout"%(repo)] if g_conf.has_key("%s_checkout"%(repo)) else "default"
         cmd = "[[ -e '%s/%s' ]] && { cd %s/%s && git fetch; } || { %s clone --recurse-submodules git@github.com:uniio/%s.git %s/%s; }" \
                 % (g_runtime_dir, repo, g_runtime_dir, repo, gitcmd, repo, g_runtime_dir, repo)
-        cos.append( shs[i%4].exe(cmd, wait=False) )
+        cos.append( shs[i].exe(cmd, wait=False) )
         if checkout != "default": # checkout desired branch or tag or commit
             cmd = "cd %s/%s && %s checkout %s" % (g_runtime_dir, repo, gitcmd, checkout)
-            cos.append( shs[i%4].exe(cmd, wait=False) )
+            cos.append( shs[i].exe(cmd, wait=False) )
         cmd = "cd %s/%s && %s pull --no-edit || true" % (g_runtime_dir, repo, gitcmd)
-        cos.append( shs[i%4].exe(cmd, wait=False) )
+        cos.append( shs[i].exe(cmd, wait=False) )
         cmd = "cd %s/%s && %s log --pretty=format:'%%h|%%ci|%%an|%%s' | head -8 || true" % (g_runtime_dir, repo, gitcmd)
-        cos.append( shs[i%4].exe(cmd, wait=False) )
+        cos.append( shs[i].exe(cmd, wait=False) )
         i += 1
-    for co in cos:
-        if not co.succ():
-            common.log("failed git command: '%s'" % (co.cmdline), 1)
-            return None
+    # for co in cos:
+    #     if not co.succ():
+    #         common.log("failed git command: '%s'" % (co.cmdline), 1)
+    #         return None
 
-    sh0 = shs[0]
-    sh1 = shs[1]
-    sh2 = shs[2]
-    sh3 = shs[3]
     # cmake repos
-    cos = []
     co = sh0.exe("cd %s/%s && mkdir -p build && cd build && cmake3 -DCMAKE_BUILD_TYPE=Release .." % (g_runtime_dir, "uniio"), wait=False)
     cos.append(co)
     co = sh1.exe("cd %s/%s && mkdir -p build && cd build && cmake3 -DCMAKE_BUILD_TYPE=Release .." % (g_runtime_dir, "sysmgmt"), wait=False)
@@ -225,13 +225,12 @@ def build(build_server, wait=True):
     cos.append(co)
     co = sh3.exe("cd %s/%s && mkdir -p build_debug && cd build_debug && cmake3 .." % (g_runtime_dir, "uniio-ui"), wait=False)
     cos.append(co)
-    for co in cos:
-        if not co.succ():
-            common.log("failed cmake command: '%s'" % (co.cmdline), 1)
-            return None
+    # for co in cos:
+    #     if not co.succ():
+    #         common.log("failed cmake command: '%s'" % (co.cmdline), 1)
+    #         return None
 
     # make repos
-    cos = []
     co = sh0.exe("cd %s/%s/build && rm -f *.rpm && make -j20 package" % (g_runtime_dir, "uniio"), wait=False)
     cos.append(co)
     co = sh1.exe("cd %s/%s/build && rm -f *.rpm && make -j20 package" % (g_runtime_dir, "sysmgmt"), wait=False)
@@ -259,36 +258,35 @@ def build_bin(build_server, wait=True):
     gitcmd = get_gitcmd()
     a,b,c,git_ssh_identityfile = g_conf["build_server"]  # [IP, username, password, git_ssh_identityfile]
     sh = build_server.newshell()
-    sh.exe("cd /tmp")
-    sh.exe("export GIT_SSH_COMMAND=\"ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o IdentityFile=%s -o ProxyCommand='ssh -q -W %%h:%%p evidence.orcadt.com'\"" % (git_ssh_identityfile))
+    cos = []
+    cos.append(sh.exe("cd /tmp", wait=False))
+    cos.append(sh.exe("export GIT_SSH_COMMAND=\"ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o IdentityFile=%s -o ProxyCommand='ssh -q -W %%h:%%p evidence.orcadt.com'\"" % (git_ssh_identityfile), wait=False))
     
     # git clone uniio repo
     repo = "uniio"
     checkout = g_conf["%s_checkout"%(repo)] if g_conf.has_key("%s_checkout"%(repo)) else "default"
     cmd = "[[ -e '%s/%s' ]] && { cd %s/%s && git fetch; } || { %s clone --recurse-submodules git@github.com:uniio/%s.git %s/%s; }" \
             % (g_runtime_dir, repo, g_runtime_dir, repo, gitcmd, repo, g_runtime_dir, repo)
-    if not sh.exe(cmd).succ(): return False
+    cos.append( sh.exe(cmd, wait=False) )
 
     if checkout != "default": # checkout desired branch or tag or commit
         cmd = "cd %s/%s && %s checkout %s" % (g_runtime_dir, repo, gitcmd, checkout)
-        if not sh.exe(cmd).succ(): return False
+        cos.append( sh.exe(cmd, wait=False) )
 
     cmd = "cd %s/%s && %s pull --no-edit || true" % (g_runtime_dir, repo, gitcmd)
-    if not sh.exe(cmd).succ(): return False
+    cos.append(sh.exe(cmd, wait=False))
     cmd = "cd %s/%s && %s log --pretty=format:'%%h|%%ci|%%an|%%s' | head -8 || true" % (g_runtime_dir, repo, gitcmd)
-    if not sh.exe(cmd).succ(): return False
+    cos.append(sh.exe(cmd, wait=False))
 
     # cmake repos
-    if not sh.exe("cd %s/%s && mkdir -p build && cd build && cmake3 -DCMAKE_BUILD_TYPE=Release .." % (g_runtime_dir, repo)).succ():
-        return False
+    cos.append(sh.exe("cd %s/%s && mkdir -p build && cd build && cmake3 -DCMAKE_BUILD_TYPE=Release .." % (g_runtime_dir, repo), wait=False))
 
     # make repos
-    cos = []
     cos.append( sh.exe("cd %s/%s/build && make -j20 cio_array cio_array.sym" % (g_runtime_dir, repo), wait=False) )
     if wait:
         for co in cos:
             if not co.succ():
-                common.log("failed make command: '%s'" % (co.cmdline), 1)
+                common.log("failed build bin. command: '%s'" % (co.cmdline), 1)
                 return None
         return cos
     else:
@@ -380,21 +378,12 @@ def replace_rpm(federation_targets, build_server, force=True):
     if not federation_targets:
         common.log("failed replace rpms. uniio servers are None.", 1)
         return False
-    cos_discard = discard_drives(federation_targets, wait=False)
     cos_build = build(build_server, wait=False)
     if not cos_build:
         return False
-    # wait for discard jobs to end
-    for co in cos_discard:
-        if not co.succ():
-            common.log("failed when discard backend drives.")
-            return False
-    # reboot all federation targets after discard
-    for t in federation_targets:
-        t.reboot(wait=False)
     # reinitialize backend
-    for t in federation_targets:
-        t.wait_alive()
+    if not shutdown_cluster(federation_targets, force=True, wait=True):
+        return False
     if not init_backend(federation_targets, force=True, wait=True):
         return False
     # wait for build job to end
@@ -439,13 +428,12 @@ def replace_bin(federation_targets, build_server, force=True):
         common.log("failed replace rpms. uniio servers are None.", 1)
         return False
 
-    cos_discard = discard_drives(federation_targets, wait=False)
     if me.is_path_executable(g_binonly): # use a local binary file to update the federation
         # wait for backend gets reinitialized
-        for co in cos_discard:
-            if not co.succ():
-                common.log("failed when discarding backend drives.")
-                return False
+        if not shutdown_cluster(federation_targets, force=True, wait=True):
+            return False
+        if not init_backend(federation_targets, force=True, wait=True):
+            return False
         for t in federation_targets:
             if not t.upload(g_binonly, "/opt/uniio/sbin/cio_array"):
                 return False
@@ -456,17 +444,16 @@ def replace_bin(federation_targets, build_server, force=True):
         cos_build = build_bin(build_server, wait=False)
         if not cos_build:
             return False
-        # wait for backend gets discarded
-        for co in cos_discard:
-            if not co.succ():
-                common.log("failed when discarding backend drives.")
-                return False
-        for t in federation_targets: # reboot after discard disks
-            t.reboot(wait=False)
-        for t in federation_targets: # reboot after discard disks
-            t.wait_alive()
+        # reinitialize backend
+        if not shutdown_cluster(federation_targets, force=True, wait=True):
+            return False
         if not init_backend(federation_targets, force=True, wait=True):
             return False
+        # wait for build task to complete
+        for co in cos_build:
+            if not co.succ():
+                common.log("failed when building uniio binaries.")
+                return False
 
         # download from build server and upload rpm packages to federation nodes:
         if not build_server.download("/tmp/", "%s/uniio/build/cio_array" % (g_runtime_dir)):  # download cio_array cio_array.sym
@@ -522,9 +509,10 @@ def init_backend(federation_targets, force=True, wait=True):
     if not federation_targets:
         common.log("federation nodes are None.")
         return False
+    raw_disk_size_G = g_conf["raw_disk_size_G"] if g_conf.has_key("raw_disk_size_G") else 480
     cos = []
     for t in federation_targets:
-        cmd  = "%s/uio_scripts/server/init_cluster.sh -d %s" % (g_runtime_dir, "-f" if force else "")
+        cmd  = "%s/uio_scripts/server/init_backend.sh init -G 300 -S %d" % (g_runtime_dir, raw_disk_size_G)
         cos.append(t.exe(cmd, wait=False))
     if wait:
         for co in cos:
@@ -695,13 +683,18 @@ def iscsi_in(client_targets):
         co.wait()
     return True
 
-def fio_server(client_targets):
+def fio_server(client_targets, start=True):
     cos = []
 
-    # login iscsi session
-    for t in client_targets:
-        cos.append(t.exe("killall -9 fio || true", wait=False))
-        cos.append(t.exe("fio --server --daemonize=/tmp/fio.pid", wait=False))
+    if start:
+        # restarting fio server
+        for t in client_targets:
+            cos.append(t.exe("killall -9 fio || true", wait=False))
+            cos.append(t.exe("fio --server --daemonize=/tmp/fio.pid", wait=False))
+    else:
+        # stop fio server
+        for t in client_targets:
+            cos.append(t.exe("killall -9 fio || true", wait=False))
     for co in cos:
         if not co.succ():
             common.log("failed restarting fio server.")
@@ -990,6 +983,8 @@ if __name__ == "__main__":
         if not clear_luns(client_targets, federation_targets): exit(1)
 
     if g_shutdown_only:
+        fio_server(start=False)
+        iscsi_out(client_targets)
         if not shutdown_cluster(federation_targets, force=g_force): exit(1)
     
     if g_boot_only:
