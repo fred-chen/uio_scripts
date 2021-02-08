@@ -29,18 +29,16 @@ handleopts() {
 function clear() {
   fuser -k ${CORE_MNT}
   umount ${CORE_MNT} || { mount | grep -w ${CORE_MNT} && { echo "can't umount ${CORE_MNT}"; exit 1; } }
-
-  mdadm --stop ${CORE_MD_PATH}
-  mdadm --stop --scan
-  while [[ -e ${CORE_MD_PATH} ]]; do { echo "stopping ${CORE_MD_PATH}..."; sleep 1; } done
+  while [[ `grep -E '^md[0-9a-zA-Z]+ : .+sd.3' /proc/mdstat | wc -l` -gt 0 ]]; do mdadm --stop --scan; done
+  sync
 
   echo -n "clearing disks ${!devices[@]} ... "
-  mdadm --zero-superblock ${!devices[@]}
   # clear partitions
   for d in ${!devices[@]}
   do
     wipefs -f -a ${d}  > /dev/null 2>&1
     dd if=/dev/zero of=${d} bs=1M count=16 > /dev/null 2>&1
+    mdadm --zero-superblock ${d}
   done
   echo "done"
 }
@@ -106,13 +104,11 @@ function init() {
     wipefs -f -a ${d}2  > /dev/null 2>&1
     wipefs -f -a ${d}3  > /dev/null 2>&1
   done
-  mdadm --stop --scan
-  while [[ -e ${CORE_MD_PATH} ]]; do { mdadm --stop ${CORE_MD_PATH}; sleep 1; } done
+
   [ ! -z "$core_devs" ] && {
     yes | mdadm --create ${CORE_MD_PATH} --level=raid0 --raid-devices=${#devices[@]} ${core_devs};
   } || { echo "failed to create core dump raid device" && return 1; }
-
-  while [[ ! -e ${CORE_MD_PATH} ]]; do { sleep 1; } done
+  sync
 
   # discard index and data partitions
   [[ ${DISCARD_RUNS} -eq 0 ]] && {
