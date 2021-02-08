@@ -94,6 +94,7 @@ function init() {
       parted -a optimal -s ${d} mkpart primary ${offset_G_Idx}GiB ${offset_G_data}GiB
       parted -a optimal -s ${d} mkpart primary ${offset_G_data}GiB ${DISK_SIZE_G}GiB
     fi
+    reload_partitions
   done
 
   core_devs=

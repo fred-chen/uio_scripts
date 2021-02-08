@@ -26,6 +26,7 @@ g_cpudata = False
 g_fill = 0
 g_createluns = 0
 g_delluns_only = False
+g_init_backend_only = False
 
 def usage(errmsg=""):
     if(errmsg != ""):
@@ -34,6 +35,7 @@ def usage(errmsg=""):
     print("usage: %s [ -c|--config configfile.json ]" % (os.path.basename(sys.argv[0])))
     print("%s [ -f|--force ] [ -s|--shutdown ]" % (' '.rjust(just)))
     print("%s [ -b|--boot ]" % (' '.rjust(just)))
+    print("%s [ -d|--initbackend ]" % (' '.rjust(just)))
     print("%s [ -u|--update ] [ --ref tag|branch|commit ] [ --binonly binpath|build ]" % (' '.rjust(just)))
     print("%s [ -i|--init ]" % (' '.rjust(just)))
     print("%s [ -p|--perftest ] [ --cpudata ] [ --fill sec ]" % (' '.rjust(just)))
@@ -46,6 +48,7 @@ def usage(errmsg=""):
         "  -f, --force:       force stop uniio node (kill cio_array)" "\n"
         "  -s, --shutdown:    gracefully stop uniio nodes" "\n"
         "  -b, --boot:        start uniio nodes" "\n"
+        "  -d, --initbackend: initialize backend" "\n"
         "  -u, --update:      update uniio build" "\n"
         "      --ref:         use along with '-u', checkout a given git reference." "\n"
         "      --binonly:     use along with '-u', only update cio_array binary." "\n"
@@ -60,7 +63,7 @@ def usage(errmsg=""):
     exit(1)
 
 def handleopts():
-    global g_conf, g_runtime_dir, g_force, g_shutdown_only, g_boot_only, g_update, g_init, g_perftest, g_binonly, g_fullmap, g_cpudata, g_fill, g_createluns, g_delluns_only, g_ref
+    global g_conf, g_runtime_dir, g_force, g_shutdown_only, g_boot_only, g_update, g_init, g_perftest, g_binonly, g_fullmap, g_cpudata, g_fill, g_createluns, g_delluns_only, g_ref, g_init_backend_only
     conf_file = "%s/auto.json" % (os.path.dirname(os.path.realpath(__file__)))
     try:
         options, args = getopt.gnu_getopt(sys.argv[1:], "hc:fsbuipd", ["help", "configfile=","force","shutdown","boot","update","init","perftest", "binonly=", "fullmap", "cpudata", "fill=", "createluns=","deleteluns", "ref="])
@@ -77,6 +80,8 @@ def handleopts():
             g_shutdown_only = True
         if(o in ('-b', '--boot')):
             g_boot_only = True
+        if(o in ('-d', '--initbackend')):
+            g_init_backend_only = True
         if(o in ('-u', '--update')):
             g_update = True
         if(o in ('', '--ref')):
@@ -511,7 +516,7 @@ def init_backend(federation_targets, force=True, wait=True):
         if raw_disk_size_G:
             cmd  = "%s/uio_scripts/server/init_backend.sh init -G 300 -S %d" % (g_runtime_dir, raw_disk_size_G)
         else:
-            cmd  = "%s/uio_scripts/server/init_backend.sh init -G 300" % (g_runtime_dir, raw_disk_size_G)
+            cmd  = "%s/uio_scripts/server/init_backend.sh init -G 300" % (g_runtime_dir)
         cos.append(t.exe(cmd, wait=False))
     if wait:
         for co in cos:
@@ -698,18 +703,18 @@ def iscsi_in(client_targets):
         co.wait()
     return True
 
-def fio_server(client_targets, start=True):
+def clear_clients(client_targets):
+    fio_server(client_targets)
+    iscsi_out(client_targets)
+    return True
+
+def fio_server(client_targets):
     cos = []
 
-    if start:
-        # restarting fio server
-        for t in client_targets:
-            cos.append(t.exe("killall -9 fio || true", wait=False))
-            cos.append(t.exe("fio --server --daemonize=/tmp/fio.pid", wait=False))
-    else:
-        # stop fio server
-        for t in client_targets:
-            cos.append(t.exe("killall -9 fio || true", wait=False))
+    # restarting fio server
+    for t in client_targets:
+        cos.append(t.exe("killall -9 fio || true", wait=False))
+        cos.append(t.exe("fio --server --daemonize=/tmp/fio.pid", wait=False))
     for co in cos:
         if not co.succ():
             common.log("failed restarting fio server.")
@@ -998,13 +1003,17 @@ if __name__ == "__main__":
         if not clear_luns(client_targets, federation_targets): exit(1)
 
     if g_shutdown_only:
-        fio_server(client_targets, start=False)
-        iscsi_out(client_targets)
+        clear_clients(client_targets)
         if not shutdown_cluster(federation_targets, force=g_force): exit(1)
     
     if g_boot_only:
         if not boot_cluster(federation_targets): exit(1)
     
+    if g_init_backend_only:
+        clear_clients(client_targets)
+        if not shutdown_cluster(federation_targets, force=g_force): exit(1)
+        if not init_backend(federation_targets, force=g_force): exit(1)
+
     if g_update:
         if not update_cluster(federation_targets, build_server, force=True): exit(1)
     
