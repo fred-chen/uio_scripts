@@ -356,15 +356,17 @@ def shutdown_cluster(federation_targets, force=True, wait=True):
     cos = []
     for t in federation_targets:
         if not (array_running(t) or fab_running(t)):
+            cos.append(t.exe("echo uniio is not running.", wait=False))
             continue
         cmd  = "%s/uio_scripts/server/init_cluster.sh %s -s" % (g_runtime_dir, "-f" if force else "")
         cos.append(t.exe(cmd, wait=False))
+    
     if wait:
         for co in cos:
             if not co.succ():
-                common.log("failed when shutting down uniio.")
-                return False
-        return True
+                common.log("failed when sending shutdown cmd to uniio.")
+                return None
+        return cos
     else:
         return cos
 
@@ -383,8 +385,6 @@ def replace_rpm(federation_targets, build_server, force=True):
         return False
     # reinitialize backend
     if not shutdown_cluster(federation_targets, force=True, wait=True):
-        return False
-    if not init_backend(federation_targets, force=True, wait=True):
         return False
     # wait for build job to end
     for co in cos_build:
@@ -432,8 +432,6 @@ def replace_bin(federation_targets, build_server, force=True):
         # wait for backend gets reinitialized
         if not shutdown_cluster(federation_targets, force=True, wait=True):
             return False
-        if not init_backend(federation_targets, force=True, wait=True):
-            return False
         for t in federation_targets:
             if not t.upload(g_binonly, "/opt/uniio/sbin/cio_array"):
                 return False
@@ -446,8 +444,6 @@ def replace_bin(federation_targets, build_server, force=True):
             return False
         # reinitialize backend
         if not shutdown_cluster(federation_targets, force=True, wait=True):
-            return False
-        if not init_backend(federation_targets, force=True, wait=True):
             return False
         # wait for build task to complete
         for co in cos_build:
@@ -474,7 +470,7 @@ def init_cluster(federation_targets, force=True):
     if not shutdown_cluster(federation_targets, force):
         return False
         
-    # init backend and restart uniio
+    # restart uniio
     cos = []
     for t in federation_targets:
         cmd  = "%s/uio_scripts/server/init_cluster.sh -i" % (g_runtime_dir)
@@ -484,8 +480,8 @@ def init_cluster(federation_targets, force=True):
             common.log("failed when initializing uniio.")
             return False
     for t in federation_targets: # give time for fabricmanager to be ready for accepting topology
-        if not t.wait_alive(8080, 120):
-            common.log("fabricmanager is not starting after 120s. port: 8080")
+        if not t.wait_alive(8080, 600):
+            common.log("fabricmanager is not starting after 600s. port: 8080")
             return False
     if not push_topology(federation_targets):
         return False
@@ -509,10 +505,13 @@ def init_backend(federation_targets, force=True, wait=True):
     if not federation_targets:
         common.log("federation nodes are None.")
         return False
-    raw_disk_size_G = g_conf["raw_disk_size_G"] if g_conf.has_key("raw_disk_size_G") else 480
+    raw_disk_size_G = g_conf["raw_disk_size_G"] if g_conf.has_key("raw_disk_size_G") else None
     cos = []
     for t in federation_targets:
-        cmd  = "%s/uio_scripts/server/init_backend.sh init -G 300 -S %d" % (g_runtime_dir, raw_disk_size_G)
+        if raw_disk_size_G:
+            cmd  = "%s/uio_scripts/server/init_backend.sh init -G 300 -S %d" % (g_runtime_dir, raw_disk_size_G)
+        else:
+            cmd  = "%s/uio_scripts/server/init_backend.sh init -G 300" % (g_runtime_dir, raw_disk_size_G)
         cos.append(t.exe(cmd, wait=False))
     if wait:
         for co in cos:
@@ -537,12 +536,28 @@ def boot_cluster(federation_targets):
     return True
 
 def update_cluster(federation_targets, build_server, force=True):
+    cos_shutdown = shutdown_cluster(federation_targets, force=True, wait=False)
+    if not cos_shutdown:
+        common.log("failed when shutting down uniio.")
+        return False
+    cos_backend = init_backend(federation_targets, force=True, wait=False)
+    if not cos_backend:
+        common.log("failed when sending reinit backend command.")
+        return False
+    
     if g_binonly:
         if not replace_bin(federation_targets, build_server, True):
             return False
     else:
         if not replace_rpm(federation_targets, build_server, True):
             return False
+    
+    # wait for backend to be reinitialized
+    for co in cos_shutdown + cos_backend:
+        if not co.succ():
+            common.log("failed when updating cluster. cmd: %s" % (co.cmdline))
+            return False
+
     if not init_cluster(federation_targets):
         return False
     return True
@@ -983,7 +998,7 @@ if __name__ == "__main__":
         if not clear_luns(client_targets, federation_targets): exit(1)
 
     if g_shutdown_only:
-        fio_server(start=False)
+        fio_server(client_targets, start=False)
         iscsi_out(client_targets)
         if not shutdown_cluster(federation_targets, force=g_force): exit(1)
     
