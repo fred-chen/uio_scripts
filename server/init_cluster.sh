@@ -186,7 +186,11 @@ uninit_array() {
 init_backend() {
   echo -n "initializing backend ..."
   SCRIPT_PATH=$(dirname $0)
-  ${SCRIPT_PATH}/init_backend.sh init -G $CORE_DEV_SIZE_G -S $DEV_SIZE_G > /dev/null 2>&1 || { echo "failed init backend." && return 1; }
+  if [[ -z "DEV_SIZE_G" ]]; then
+    ${SCRIPT_PATH}/init_backend.sh init -G $CORE_DEV_SIZE_G  > /dev/null 2>&1 || { echo "failed init backend." && return 1; }
+  else
+    ${SCRIPT_PATH}/init_backend.sh init -G $CORE_DEV_SIZE_G -S $DEV_SIZE_G > /dev/null 2>&1 || { echo "failed init backend." && return 1; }
+  fi
   echo "done"
 }
 init_array() {
