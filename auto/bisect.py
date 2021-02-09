@@ -39,7 +39,7 @@ def usage(errmsg=""):
     print("    --narrow   : use with '-m bisect', '-m daily' and '-m every'. ")
     print("                  for bisect: stop when remaining commits are less than num_commits.")
     print("                  for every : checkout every num_commits commits.")
-    print("                  for daily : checkout the latest commits in every num_days.")
+    print("                  for daily : checkout the last commits in every num_days.")
     print("")
     print("arguments:")
     print("  commit1, commit2 : start and end commits for test. start from the latest commit of the branch in config file if only one of them is specified.")
@@ -365,7 +365,7 @@ if __name__ == "__main__":
         for c in clist:
             print ("|".join(c))
     elif g_op == "daily":  # daily
-        print("Performing 'daily' performance test at the latest commits of every %d days." % (g_narrow))
+        print("Performing 'daily' performance test at the last commits of every %d days." % (g_narrow))
         daily(clist, g_narrow)
     elif g_op == "everyn":
         print("Performing 'every_%d_commits' performance test." % (g_narrow))
