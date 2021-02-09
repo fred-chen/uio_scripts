@@ -6,7 +6,7 @@ a script automatically finds out which commit causes the performance regression
 @author: fred
 '''
 
-import sys, os, getopt, json, uuid
+import sys, os, getopt, json, uuid, datetime
 sys.path.append('%s/../cctf' % (os.path.dirname(os.path.realpath(__file__))))
 from cctf import gettarget, me
 
@@ -17,19 +17,41 @@ g_c1, g_c2 = "",""
 g_narrow = 3
 g_kiops = 300
 g_results = []
+g_op = "bisect"  # bisect or daily
 
 def usage(errmsg=""):
     if(errmsg != ""):
-        sys.stderr.write("\nERROR: %s\n" % errmsg)
-    print("usage: %s  [ -c|--config configfile.json ] [ --narrow num_commits ] [ -k kiops ] commit1 commit2" % (os.path.basename(sys.argv[0])))
+        sys.stderr.write("\nERROR: %s\n\n" % errmsg)
+    just = len("usage: %s" % (os.path.basename(sys.argv[0])))
+    print("usage: %s  [ -c|--config configfile.json ] commit1 commit2" % (os.path.basename(sys.argv[0])))
+    print("%s  [ -m|--method bisect ] [ -k kiops ] [ --narrow num_commits ] " % (' '.rjust(just)))
+    print("%s  [ -m|--method everyn ] [ --narrow num_commits ] " % (' '.rjust(just)))
+    print("%s  [ -m|--method daily  ] [ --narrow num_days ] " % (' '.rjust(just)))
+    print("")
+    print("a script automatically finds out which commit causes the performance regression.")
+    print("")
+    print("options:")
+    print("  -c, --config : config file path.")
+    print("  -m bisect    : checkout middle commits and run bisect perf test against it.")
+    print("  -m everyn    : checkout every n commits and run bisect perf test against it.")
+    print("  -m daily     : checkout the last commit in every num_days and run perf test everytime.")
+    print("    -k         : use with '-m bisect', the K IOPS number for bisect comparison.")
+    print("    --narrow   : use with '-m bisect', '-m daily' and '-m every'. ")
+    print("                  for bisect: stop when remaining commits are less than num_commits.")
+    print("                  for every : checkout every num_commits commits.")
+    print("                  for daily : checkout the latest commits in every num_days.")
+    print("")
+    print("arguments:")
+    print("  commit1, commit2 : start and end commits for test. start from the latest commit of the branch in config file if only one of them is specified.")
+    print("")
     exit(1)
 
 def handleopts():
-    global g_conf, g_conf_file, g_runtime_dir, g_c1, g_c2, g_narrow, g_kiops
+    global g_conf, g_conf_file, g_runtime_dir, g_c1, g_c2, g_narrow, g_kiops, g_op
 
     conf_file = "%s/auto.json" % (os.path.dirname(os.path.realpath(__file__)))
     try:
-        options, args = getopt.gnu_getopt(sys.argv[1:], "hc:k:", ["help", "configfile=", "narrow="])
+        options, args = getopt.gnu_getopt(sys.argv[1:], "hc:k:m:", ["help", "configfile=", "narrow=", "method="])
     except getopt.GetoptError as err:
         usage(err)
     for o, a in options:
@@ -41,6 +63,9 @@ def handleopts():
             g_narrow = int(a)
         if(o in ('-k', '')):
             g_kiops = int(a)
+        if(o in ('-m', '--method')):
+            g_op = a
+
     f = open(conf_file)
     if not f:
         print("can not open configuration file '%s'." % conf_file)
@@ -129,8 +154,8 @@ def bisect(clist, comp_iops, narrow=3, runlast=False):
             iops: the total iops number corresponds to commit_info
     '''
     global g_results
-    path_perfauto = "{0}/perfauto.py".format(os.path.dirname(os.path.realpath(__file__)))
 
+    top_commit = clist[0][0]; bottom_commit = clist[len(clist)-1][0]
     print ("\n\nbisect: top_commit=%s, bottom_commit=%s, num_commits=%d, compare_iops=%d, narrow_down=%d" % (top_commit, bottom_commit, len(clist), g_kiops*1000, g_narrow))
     print ("-" * 80)
     if not clist or len(clist) <= narrow:
@@ -139,36 +164,155 @@ def bisect(clist, comp_iops, narrow=3, runlast=False):
         idx = len(clist) / 2
     else:
         idx = len(clist) - 1  # run the last commit for the first round
-    hash = clist[idx][0]
-    logpath = "{0}.{1}.out".format(hash, str(uuid.uuid1()))
-    sys.stdout.write ( "testing {0} log: {1}\n".format( "|".join(clist[idx]), logpath ) ); sys.stdout.flush()
-
-    cmd = "{0} -c {1} -u --ref={2} -p --fill 600 --fullmap > {3} ".format(path_perfauto, g_conf_file, hash, logpath)
-    iops = None; path = None
-    succ = me.succ(cmd)
-    if not succ:  # execution fail
-        sys.stdout.write( "  FAIL!! {0} log: {1}\n".format( "|".join(clist[idx]), logpath ) )
-    else:
-        iops, iops_str, path = get_iops(logpath)
-        sys.stdout.write( "  IOPS: {2} ref: {0} log: {1}\n".format( "|".join(clist[idx]), logpath, iops_str ) )
-        if os.path.exists(path):
-            me.exe("mv {0} {1}/".format(logpath, path))
-    if iops:
-        result = [ hash, iops ]
-        g_results.append(result)
+    result = run_commit(clist[idx])
+    iops = result[1]
+    if iops > 0:
         if iops > comp_iops:  # goto left half in the list (for later commits)
             lst = clist[:idx]
         else:                 # goto right half in the list (for earlier commits)
             lst = clist[idx+1:]
     else:   # can't get iops for this round, retry with the closest commits
-        result = [ hash, -1 ]
-        g_results.append(result)
         lst = clist[:-1]
+    g_results.append(result)
     if runlast:
         lst = clist
     result = bisect(lst, comp_iops, narrow, runlast=False)
     return result
+
+def daily(clist, days):
+    """test commit every 'days' days
+
+    Args:
+        clist (list): the commit list: [ [hash, committer date, author name, desc], ...  ]
+        days (int): every n days
+    """
+    global g_results
+
+    daily_commits = {}  # { date : [ commit1, commit2 ] }
+    for c in clist:
+        date_str = c[1].split(" ")[0]
+        hash     = c[0]
+        if daily_commits.has_key(date_str):
+            daily_commits[date_str].append(hash)
+        else:
+            daily_commits[date_str] = [ hash ]
+    # choosing hashes
+    hashes = []   # [ [hash, date], [hash, date], ... ]
+    lasthash = clist[len(clist)-1][0]
+    prev_date = None
+    for d in reversed(sorted(daily_commits)):
+        date_obj = datetime.datetime.strptime(d, '%Y-%m-%d')
+        hash = daily_commits[d][0]
+        if not prev_date or abs((prev_date - date_obj).days) >= days:
+            prev_date = date_obj
+            hashes.append([hash, date_obj])          # choose the latest commit hash of that day
+        else:
+            if hash == lasthash:
+                hashes.append([lasthash, date_obj])  # choose the last hash in clist anyway
+    for i in range(len(hashes)):
+        date_strs = [ "%s(%d-%.2d-%.2d)" % (hash[0], hash[1].year, hash[1].month, hash[1].day) for hash in hashes[i:] ]
+        hash = hashes[i][0]
+        for commit in clist:
+            if commit[0] == hash: break
+        print ("\n\ndaily (every %d days): %s" % (days, " ".join(date_strs)))
+        print ("-" * 80)
+        result = run_commit(commit)
+        g_results.append(result)
     
+    print_summary(g_results, clist)
+    return g_results
+
+def everyn(clist, num_commits):
+    """test commit every 'num_commits' num_commits
+
+    Args:
+        clist (list): the commit list: [ [hash, committer date, author name, desc], ...  ]
+        num_commits (int): every n commits
+    """
+    global g_results
+
+    # choosing commits
+    indices = range(0, len(clist), num_commits)
+    if indices[len(indices)-1] != len(clist) - 1:
+        indices.append(len(clist) - 1)
+    
+    commits = []
+    for idx in indices:
+        commits.append(clist[idx])
+    idx = 0
+    for idx in range(len(commits)):
+        commit = commits[idx]
+        commit_hash_strs = [ "%s" % (c[0]) for c in commits[idx:] ]
+        print ("\n\\neveryn (every %d commits): %s" % (num_commits, " ".join(commit_hash_strs)))
+        print ("-" * 80)
+        result = run_commit(commit)
+        g_results.append(result)
+    print_summary(g_results, clist)
+    return g_results
+
+def print_summary(results, clist):
+    print ("\nSummary:")
+    print ("-"*80)
+    if not results:
+        print ("no results.")
+    for result in results:
+        print ("commit: %s iops: %d" % (result[0], result[1]))
+    max_iops     = None
+    maxiops_hash = ""
+    min_iops     = None
+    miniops_hash = ""
+    for i in range(len(results)):
+        hash = results[i][0]
+        iops = results[i][1]
+        if max_iops is None: max_iops = iops
+        if min_iops is None: min_iops = iops
+        if iops >= max_iops:
+            max_iops     = iops
+            maxiops_hash = hash
+        if iops <= min_iops:
+            min_iops     = iops
+            miniops_hash = hash
+    max_commit, min_commit = None, None
+    for c in clist:
+        hash = c[0]
+        if hash == maxiops_hash:
+            max_commit = c
+        if hash == miniops_hash:
+            min_commit = c
+    print ("\n")
+    if max_iops:
+        print ("maximum iops: %d commit: %s" % (max_iops, "|".join(max_commit)))
+    if min_iops:
+        print ("minimum iops: %d commit: %s" % (min_iops, "|".join(min_commit)))
+
+def run_commit(commit):
+    """run a single perf test on the given hash
+
+    Args:
+        commit (str): a git commit: [hash, committer date, author name, desc]
+    """
+    path_perfauto = "{0}/perfauto.py".format(os.path.dirname(os.path.realpath(__file__)))
+    hash = commit[0]
+    logpath = "{0}.{1}.out".format(hash, str(uuid.uuid1()))
+    sys.stdout.write ( "testing {0} log: {1}\n".format( "|".join(commit), logpath ) ); sys.stdout.flush()
+
+    cmd = "{0} -c {1} -u --ref={2} -p --fill 600 --fullmap > {3} ".format(path_perfauto, g_conf_file, hash, logpath)
+    iops = None; path = None
+    succ = me.succ(cmd)
+    if not succ:  # execution fail
+        sys.stdout.write( "  FAIL!! {0} log: {1}\n".format( "|".join(commit), logpath ) )
+    else:
+        iops, iops_str, path = get_iops(logpath)
+        sys.stdout.write( "  IOPS: {2} ref: {0} log: {1}\n".format( "|".join(commit), logpath, iops_str ) )
+    if os.path.exists(path):
+        me.exe("mv {0} {1}/".format(logpath, path))
+    if iops:
+        result = [ hash, iops ]
+    else:   # can't get iops for this round, retry with the closest commits
+        result = [ hash, 0 ]
+    
+    return result
+
 if __name__ == "__main__":
     if not handleopts(): exit(1)
 
@@ -192,33 +336,41 @@ if __name__ == "__main__":
     else:
         min, max = idx1, idx2
     clist = clist[min:max+1]
-    top_commit = clist[0][0]; bottom_commit = clist[max-min][0]
 
-    result = bisect(clist, g_kiops * 1000, g_narrow, runlast=True) # [ [hash, iops], ... ]
-    g_results.reverse()
-    c1 = ""; c2 = ""
-    for r in g_results:
-        hash = r[0]
-        iops = r[1]
-        if iops > g_kiops*1000:
-            if not c1: c1 = hash  # the most recent commit that achieves performance goal
+    if g_op == "bisect":
+        print("Performing 'bisect' performance test.")
+        result = bisect(clist, g_kiops * 1000, g_narrow, runlast=True) # [ [hash, iops], ... ]
+        g_results.reverse()
+        c1 = ""; c2 = ""
+        for r in g_results:
+            hash = r[0]
+            iops = r[1]
+            if iops > g_kiops*1000:
+                if not c1: c1 = hash  # the most recent commit that achieves performance goal
+            else:
+                if not c2: c2 = hash  # the most recent commit that fails performance goal
+        for i in range(len(clist)):
+            hash = clist[i][0]
+            if hash == c1:
+                idx1 = i
+            if hash == c2:
+                idx2 = i
+        if idx1 > idx2:
+            min, max = idx2, idx1
         else:
-            if not c2: c2 = hash  # the most recent commit that fails performance goal
-    for i in range(len(clist)):
-        hash = clist[i][0]
-        if hash == c1:
-            idx1 = i
-        if hash == c2:
-            idx2 = i
-    if idx1 > idx2:
-        min, max = idx2, idx1
-    else:
-        min, max = idx1, idx2
+            min, max = idx1, idx2
 
-    clist = clist[min:max+1]
-    print ("the problematic commit might be in:")
-    for c in clist:
-        print ("|".join(c))
-        
+        clist = clist[min:max+1]
+        print ("the problematic commit might be in:")
+        for c in clist:
+            print ("|".join(c))
+    elif g_op == "daily":  # daily
+        print("Performing 'daily' performance test at the latest commits of every %d days." % (g_narrow))
+        daily(clist, g_narrow)
+    elif g_op == "everyn":
+        print("Performing 'every_%d_commits' performance test." % (g_narrow))
+        everyn(clist, g_narrow)
+    else:
+        usage("method '%s' is not supported." % (g_op))
 
 
