@@ -109,7 +109,7 @@ def get_clist(build_server):
 def get_iops(logpath):
     iops, iops_str = None, None
     uiodir = "{0}/..".format(os.path.dirname(os.path.realpath(__file__)))
-    path_showfio = "{0}/client/showfio.sh".format(uiodir)
+    path_showfio = "{0}/client/showfio.py".format(uiodir)
     rt, path_results, err = me.exe("tail {log} | grep 'log location' | awk '{{print $3}}'".format(log=logpath))
     if path_results:
         cmd = "{showfio} $(ls {path}/fio_output/[^fill]*) | grep 'Total: IOPS:' | awk '{{print $3}}' ".format(showfio=path_showfio, path=path_results)
