@@ -505,9 +505,9 @@ def init_backend(federation_targets, force=True, wait=True):
     cos = []
     for t in federation_targets:
         if raw_disk_size_G:
-            cmd  = "%s/uio_scripts/server/init_backend.sh init -G 300 -S %d" % (g_runtime_dir, raw_disk_size_G)
+            cmd  = "%s/uio_scripts/server/init_backend.sh -O init -G 300 -S %d" % (g_runtime_dir, raw_disk_size_G)
         else:
-            cmd  = "%s/uio_scripts/server/init_backend.sh init -G 300" % (g_runtime_dir)
+            cmd  = "%s/uio_scripts/server/init_backend.sh -O init -G 300" % (g_runtime_dir)
         cos.append(t.exe(cmd, wait=False))
     if wait:
         for co in cos:
