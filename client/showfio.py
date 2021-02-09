@@ -18,7 +18,7 @@ def E(msg):
 def parse(path):
     if not os.path.exists(path):
         E("'{}' doesn't exist.".format(path))
-    err = me.getint("egrep 'error=' {0} | wc -l".format(path))
+    err = me.getint("egrep 'error=' {0} | wc -l".format(path))  # error message outside of json string
     
     f = open(path)
     lines = f.readlines()
@@ -33,100 +33,117 @@ def parse(path):
     except:
         E("can't parse json: {}".format(path))
     
-
-    ALL_READ_IOPS = 0
-    ALL_READ_BW = 0
-    ALL_READ_IOS = 0
-    ALL_READ_LAT = 0
-    ALL_WRITE_IOPS = 0
-    ALL_WRITE_BW = 0
-    ALL_WRITE_IOS = 0
-    ALL_WRITE_LAT = 0
-    TOTAL_IOS = 0
-    TOTAL_LAT = 0
-    TOTAL_IOPS = 0
-    TOTAL_BW = 0
-    AVG_LAT = 0
-    AVG_READ_LAT = 0
-    AVG_WRITE_LAT = 0
+    # client_stats for remote fio server, jobs for local
+    stats = []
+    stats += j["client_stats"] if j.has_key("client_stats") else []
+    stats += j["jobs"] if j.has_key("jobs") else []
     
-    client_stats = j["client_stats"]
-    hostnames = []
-    for cs in client_stats:
+    data={}  # { entry_name : {
+             #                  read: [iops, lat_ns, bw_bytes, ios, runtime, total_lat],
+             #                  write: [iops, lat_ns, bw_bytes, ios, runtime, total_lat],
+             #                  error: num_errors,
+             #                  numjobs: num_jobs,
+             #                  max_runtime: max_runtime
+             #                }
+             # }
+    for stat in stats:
+        if stat["jobname"] == "All clients": continue
+        entry_name      = stat["hostname"] if stat.has_key("hostname") else stat["jobname"]
+        read_iops       = stat["read"]["iops"]
+        read_lat        = stat["read"]["lat_ns"]["mean"]
+        read_bw         = stat["read"]["bw_bytes"]
+        read_ios        = stat["read"]["total_ios"]
+        read_runtime    = stat["read"]["runtime"]  # ms
+        read_total_lat  = read_ios * read_lat
+        write_iops      = stat["write"]["iops"]
+        write_lat       = stat["write"]["lat_ns"]["mean"]
+        write_bw        = stat["write"]["bw_bytes"]
+        write_ios       = stat["write"]["total_ios"]
+        write_runtime   = stat["write"]["runtime"]
+        write_total_lat = write_ios * write_lat
+        num_errors      = stat["error"]
+        runtime         = read_runtime if read_runtime >= write_runtime else write_runtime
 
-
-# num_entries=`egrep -v $filterstr $n | jq '.client_stats[] | select(.jobname != "All clients") | .hostname' 2>/dev/null | wc -l`
-# if [ $num_entries = 0 ]; then
-# num_entries=`egrep -v $filterstr $n | jq '.jobs[].jobname' 2>/dev/null | wc -l`
-# entry_name="jobs"
-# itemname="jobname"
-# else
-# entry_name="client_stats"
-# itemname="hostname"
-# fi
-# echo $n[$ERR_STAT]:
-# echo =============================================================
-# for h in `seq 0 $(($num_entries-1))`
-# do
-# host=`cat $n | egrep -v $filterstr | jq .$entry_name[$h].$itemname`
-# r_iops=`cat $n | egrep -v $filterstr | jq .$entry_name[$h].read.iops` && r_iops=${r_iops%.*}
-# r_bw_bytes=`cat $n | egrep -v $filterstr | jq .$entry_name[$h].read.bw_bytes` && r_bw_megabytes=$((r_bw_bytes / 1024 /1024 ))
-# r_lat=`cat $n | egrep -v $filterstr | jq .$entry_name[$h].read.lat_ns.mean` && r_lat=${r_lat%.*} && r_lat=$((r_lat / 1000))
-# r_ios=`cat $n | egrep -v $filterstr | jq .$entry_name[$h].read.total_ios`
-
-# w_iops=`cat $n | egrep -v $filterstr | jq .$entry_name[$h].write.iops` && w_iops=${w_iops%.*}
-# w_bw_bytes=`cat $n | egrep -v $filterstr | jq .$entry_name[$h].write.bw_bytes` && w_bw_megabytes=$((w_bw_bytes / 1024 /1024 ))
-# w_lat=`cat $n | egrep -v $filterstr | jq .$entry_name[$h].write.lat_ns.mean` && w_lat=${w_lat%.*} && w_lat=$((w_lat / 1000))
-# w_ios=`cat $n | egrep -v $filterstr | jq .$entry_name[$h].write.total_ios`
-
-# r_job_runtime=`cat $n | egrep -v $filterstr | jq .$entry_name[$h].read.runtime` && r_job_runtime=$((r_job_runtime / 1000))
-# w_job_runtime=`cat $n | egrep -v $filterstr | jq .$entry_name[$h].write.runtime` && w_job_runtime=$((w_job_runtime / 1000))
-# if [ $r_job_runtime -ge $w_job_runtime ]; then
-#   job_runtime=$r_job_runtime
-# else
-#   job_runtime=$w_job_runtime
-# fi
-
-# ALL_READ_IOPS=$((ALL_READ_IOPS+r_iops))
-# ALL_READ_BW=$((ALL_READ_BW+r_bw_megabytes))
-# ALL_READ_IOS=$((ALL_READ_IOS+r_ios))
-# ALL_READ_LAT=$((ALL_READ_LAT+r_lat*r_ios))
-# ALL_WRITE_IOPS=$((ALL_WRITE_IOPS+w_iops))
-# ALL_WRITE_BW=$((ALL_WRITE_BW+w_bw_megabytes))
-# ALL_WRITE_IOS=$((ALL_WRITE_IOS+w_ios))
-# ALL_WRITE_LAT=$((ALL_WRITE_LAT+w_lat*w_ios))
-# TOTAL_IOS=$((TOTAL_IOS+r_ios+w_ios))
-# TOTAL_LAT=$((TOTAL_LAT+r_ios*r_lat+w_ios*w_lat))
-
-# echo $host[$job_runtime] Read_IOPS: ${r_iops}@${r_lat}us Read_BW: ${r_bw_megabytes}MB/s Write_IOPS: ${w_iops}@${w_lat}us Write_BW: ${w_bw_megabytes}MB/s
-# done
-
-# TOTAL_IOPS=$((ALL_READ_IOPS+ALL_WRITE_IOPS))
-# TOTAL_BW=$((ALL_READ_BW+ALL_WRITE_BW))
-
-# if [ $TOTAL_IOS == 0 ]; then
-# AVG_LAT=0
-# else
-# AVG_LAT=$((TOTAL_LAT/TOTAL_IOS))
-# fi
-
-# if [ $ALL_READ_IOS == 0 ]; then
-# AVG_READ_LAT=0
-# else
-# AVG_READ_LAT=$((ALL_READ_LAT/ALL_READ_IOS))
-# fi
-# if [ $ALL_WRITE_IOS == 0 ]; then
-# AVG_WRITE_LAT=0
-# else
-# AVG_WRITE_LAT=$((ALL_WRITE_LAT/ALL_WRITE_IOS))
-# fi
-
-# echo Total: IOPS: $TOTAL_IOPS@${AVG_LAT}us  BW: ${TOTAL_BW}MB/s  READ_BW: ${ALL_READ_BW}MB/s  WRITE_BW: ${ALL_WRITE_BW}MB/s READ_IOPS: ${ALL_READ_IOPS}@${AVG_READ_LAT}us WRITE_IOPS: ${ALL_WRITE_IOPS}@${AVG_WRITE_LAT}us
-# echo =============================================================
-# done
-
+        if data.has_key(entry_name):
+            data[entry_name]["read"][0]  += read_iops
+            data[entry_name]["read"][1]  += read_lat
+            data[entry_name]["read"][2]  += read_bw
+            data[entry_name]["read"][3]  += read_ios
+            data[entry_name]["read"][4]  += read_runtime
+            data[entry_name]["read"][5]  += read_total_lat
+            data[entry_name]["write"][0] += write_iops
+            data[entry_name]["write"][1] += write_lat
+            data[entry_name]["write"][2] += write_bw
+            data[entry_name]["write"][3] += write_ios
+            data[entry_name]["write"][4] += write_runtime
+            data[entry_name]["write"][5] += write_total_lat
+            data[entry_name]["error"]    += num_errors
+            data[entry_name]["numjobs"]  += 1
+            data[entry_name]["max_runtime"] = runtime if data[entry_name]["max_runtime"] < runtime else data[entry_name]["max_runtime"]
+        else:
+            data[entry_name] = {}
+            data[entry_name]["read"]    = [read_iops, read_lat, read_bw, read_ios, read_runtime, read_total_lat]
+            data[entry_name]["write"]   = [write_iops, write_lat, write_bw, write_ios, write_runtime, write_total_lat]
+            data[entry_name]["error"]   = num_errors
+            data[entry_name]["numjobs"] = 1
+            data[entry_name]["max_runtime"] = runtime
+    
+    for entry_name in data.keys():
+        err += data[entry_name]["error"]   # ioerror of jobs added to err
+    print ( "%s[%s]" % (os.path.basename(path), "OK" if not err else "ERR:%d" % (err)) )
+    print ( "=" * 80 )
+    TOTAL_READ_IOS = 0
+    TOTAL_READ_LAT = 0
+    TOTAL_WRITE_IOS = 0
+    TOTAL_WRITE_LAT = 0
+    TOTAL_READ_IOPS = 0
+    TOTAL_WRITE_IOPS = 0
+    TOTAL_READ_BW = 0
+    TOTAL_WRITE_BW = 0
+    for entry_name in data.keys():
+        # print("%s: %s" % (entry_name, data[entry_name]))
+        Read_IOPS  = data[entry_name]["read"][0]
+        Read_LAT   = data[entry_name]["read"][5] / (data[entry_name]["read"][3] or 1) / 1000  # total_lat / ios
+        Read_BW    = data[entry_name]["read"][2] / 1024 / 1024  # MiB
+        Write_IOPS = data[entry_name]["write"][0]
+        Write_LAT  = data[entry_name]["write"][5] / (data[entry_name]["write"][3] or 1) / 1000  # total_lat / ios
+        Write_BW   = data[entry_name]["write"][2] / 1024 / 1024  # MiB
+        error      = data[entry_name]["error"]
+        max_runtime = data[entry_name]["max_runtime"] / 1000     # seconds
+        print ("%s[%d]: Read_IOPS: %d@%dus Read_BW: %dMiB/s Write_IOPS: %d@%dus Write_BW: %dMiB/s [%s]" % \
+                (entry_name, max_runtime, Read_IOPS, Read_LAT, Read_BW, Write_IOPS, Write_LAT, Write_BW, "OK" if error == 0 else "ERR:%d"%(error)))
+        
+        TOTAL_READ_IOPS  += Read_IOPS
+        TOTAL_READ_IOS   += data[entry_name]["read"][3]
+        TOTAL_READ_LAT   += data[entry_name]["read"][5]
+        TOTAL_READ_BW    += Read_BW
+        TOTAL_WRITE_IOPS += Write_IOPS
+        TOTAL_WRITE_IOS  += data[entry_name]["write"][3]
+        TOTAL_WRITE_LAT  += data[entry_name]["write"][5]
+        TOTAL_WRITE_BW   += Write_BW
+    
+    TOTAL_IOPS    = TOTAL_READ_IOPS + TOTAL_WRITE_IOPS
+    TOTAL_BW      = TOTAL_READ_BW + TOTAL_WRITE_BW
+    AVG_LAT       = ( TOTAL_READ_LAT + TOTAL_WRITE_LAT ) / ( TOTAL_READ_IOS + TOTAL_WRITE_IOS ) / 1000 # ms
+    AVG_READ_LAT  = TOTAL_READ_LAT / (TOTAL_READ_IOS or 1) / 1000
+    AVG_WRITE_LAT = TOTAL_WRITE_LAT / (TOTAL_WRITE_IOS or 1) / 1000
+    print ("Total: IOPS: %d@%dus BW: %sMiB/s READ_IOPS: %d@%dus WRITE_IOPS: %d@%dus READ_BW: %dMiB/s WRITE_BW: %dMiB/s" % \
+            (TOTAL_IOPS, AVG_LAT, TOTAL_BW, TOTAL_READ_IOPS, AVG_READ_LAT, TOTAL_WRITE_IOPS, AVG_WRITE_LAT, TOTAL_READ_BW, TOTAL_WRITE_BW))    
+    print ("=" * 80)
+    
+    return data
 
 if __name__ == "__main__":
     files = sys.argv[1:]
+    if not files: files = ['fio_output']
+    jsons = []
     for f in files:
-        parse(f)
+        if not os.path.exists(f): E("%s doesn't exist." % (f))
+        if os.path.isdir(f): # try all json files if it's a dir
+            for jfile in os.listdir(f):
+                jsons.append("%s/%s" % (f, jfile))
+        else:
+            jsons.append(f)
+    for j in jsons:
+        parse(j)
+        print("\n")
