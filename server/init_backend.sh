@@ -8,10 +8,11 @@ CORE_SIZE_G=300  # size in GiB reserved for core dump
 DISK_SIZE_G=""   # size in GiB for disks
 OP=
 DISCARD_RUNS=0
+DEVS=
 
-function usage { echo "usage: $(basename $0) [ clear|init ] [ -G dumpdev_size ] [ -S disk_size ]" && exit 1; }
+function usage { echo "usage: $(basename $0) [ -O clear|init ] [ -G dumpdev_size ] [ -S disk_size ] devs..." && exit 1; }
 handleopts() {
-    OPTS=`getopt -o G:hS:  -- "$@"`
+    OPTS=`getopt -o G:hS:O:  -- "$@"`
     [[ $? -eq 0 ]] || usage
 
     eval set -- "$OPTS"
@@ -20,10 +21,12 @@ handleopts() {
             -h) shift 1; usage;;
             -G) CORE_SIZE_G=$2; shift 2;;
             -S) DISK_SIZE_G=$2; shift 2;;
+            -O) OP=$2; shift 2;;
             --) shift; break;;
         esac
     done
-    [[ $# -ne 0 ]] && OP=$@ || OP=""
+    [[ -z "$OP" ]] && echo "must specify an operation with '-O'" && exit 1;
+    [[ $# -ne 0 ]] && DEVS=$@
 }
 
 function clear() {
@@ -141,10 +144,17 @@ function init() {
 }
 
 function main() {
-  handleopts $@
-  # get / filesystem device
-  ROOTDEV=`mount | grep -w / | awk '{print $1}' | sed 's/[0-9]//g'`
-  DEVS=`lsblk -lpn -o NAME | grep -w 'sd.' | grep -v $ROOTDEV`
+  handleopts "$@"
+  if [[ -z "$DEVS" ]]; then
+    # get / filesystem device
+    ROOTDEV=`mount | grep -w / | awk '{print $1}' | sed 's/[0-9]//g'`
+    DEVS="`lsblk -lpn -o NAME | grep -w 'sd.' | grep -v $ROOTDEV`"
+  fi
+
+  for d in $DEVS
+  do
+    [[ -e "$d" ]] && continue || { echo "'$d' does not exist."; exit 1; }
+  done
 
   declare -A devices
   for d in $DEVS # build a device name->wwn assoc-array
@@ -168,4 +178,4 @@ function main() {
   fi
 }
 
-main $@
+main "$@"
