@@ -339,7 +339,8 @@ if __name__ == "__main__":
 
     if g_op == "bisect":
         print("Performing 'bisect' performance test.")
-        result = bisect(clist, g_kiops * 1000, g_narrow, runlast=True) # [ [hash, iops], ... ]
+        bisect(clist, g_kiops * 1000, g_narrow, runlast=True) # [ [hash, iops], ... ]
+        print_summary(g_results, clist)
         g_results.reverse()
         c1 = ""; c2 = ""
         for r in g_results:
