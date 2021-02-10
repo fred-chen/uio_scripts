@@ -529,6 +529,10 @@ def boot_cluster(federation_targets):
         if not co.succ():
             common.log("failed when starting uniio.")
             return False
+    for t in federation_targets: # give time for fabricmanager to be ready for accepting topology
+        if not t.wait_alive(8080, 600):
+            common.log("fabricmanager is not starting after 600s. port: 8080")
+            return False
     if not attach_luns(federation_targets):
         return False
     return True
