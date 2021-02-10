@@ -927,6 +927,15 @@ def counter_log(jobdesc, federation_targets):
 
     return counter_log_dir, counter_log_path, cmdobjs
 
+def showfio(path):
+    if not path: return False
+    uiodir = "{0}/..".format(os.path.dirname(os.path.realpath(__file__)))
+    path_showfio = "{0}/client/showfio.py".format(uiodir)
+    cmd = "{showfio} $(ls {path}/fio_output/[^fill]*)".format(showfio=path_showfio, path=path)
+    rt, out, err = me.exe(cmd)
+    print ("\n%s\n" % (out))
+    return True
+
 def perf_test(client_targets, federation_targets, fill=0):
     '''
         run performance test.
@@ -975,6 +984,7 @@ def perf_test(client_targets, federation_targets, fill=0):
             return False
     json.dump(g_conf, open("%s/settings.json" % (logdir), 'w'), indent=2)  # dump a copy of config file to the logdir
     common.log("DONE EEPERFTEST.\n%s\nlog location: %s" % ("-"*60, os.path.join(os.getcwd(), logdir)))
+    showfio (logdir)
     return True
 
 if __name__ == "__main__":
