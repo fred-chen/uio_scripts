@@ -1004,7 +1004,7 @@ if __name__ == "__main__":
     
     if g_init_backend_only:
         clear_clients(client_targets)
-        if not shutdown_cluster(federation_targets, force=g_force): exit(1)
+        if not shutdown_cluster(federation_targets, force=True): exit(1)
         if not init_backend(federation_targets, force=g_force): exit(1)
 
     if g_update:
