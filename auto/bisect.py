@@ -129,10 +129,10 @@ def get_clist(build_server):
         sh.exe(cmd)
     cmd = "cd %s/%s && %s pull --no-edit || true" % (g_runtime_dir, repo, gitcmd)
     sh.exe(cmd)
-    clst = sh.exe("cd %s/%s && %s --no-pager log --pretty=format:'%%h|%%ci|%%an|%%s'" % (g_runtime_dir, repo, gitcmd), log=False).getlist()
+    clst = sh.exe("cd {0}/{1} && {2} --no-pager log --pretty=format:'%h{3}%ci{3}%an{3}%s'".format(g_runtime_dir, repo, gitcmd, "|^||IMAFANCYSPLITTER||^|"), log=False).getlist()
     clist = []
     for c in clst:
-        clist.append(c.split("|"))
+        clist.append(c.split("|^||IMAFANCYSPLITTER||^|"))
     return clist
 
 def get_iops(logpath):
@@ -324,7 +324,12 @@ if __name__ == "__main__":
     clist = get_clist(build_server)  # [ [hash, committer date, author name, desc], ...  ]
     if not g_c2:    # no second commit specified, use top commit by default
         g_c2 = clist[0][0]
-
+    clist = sorted(clist, key=lambda l: l[1], reverse=True)
+    # print ("="*40+"clist start (%d)" % (len(clist))+"="*40)
+    # for c in clist:
+    #     print (c)
+    # print ("="*40+"clist end (%d)" % (len(clist))+"="*40)
+    # print ("g_c1=%s, g_c2=%s" % (g_c1, g_c2))
     # find commit indices
     idx1, idx2 = -1, -1
     for i in range(len(clist)):
@@ -333,13 +338,21 @@ if __name__ == "__main__":
             idx1 = i
         if g_c2 == hash:
             idx2 = i
+    # print ("idx1=%d, idx2=%d" % (idx1, idx2))
     if idx1 == -1 or idx2 == -1:
         print ("can not find '%s' or '%s' in git commit history!" % (g_c1, g_c2))
+        exit(1)
     if idx1 > idx2:
         min, max = idx2, idx1
     else:
         min, max = idx1, idx2
     clist = clist[min:max+1]
+    # print ("="*40+"clist sub start (%d)" % (len(clist))+"="*40)
+    # for c in clist:
+    #     print (c)
+    # print ("="*40+"clist sub end (%d)" % (len(clist))+"="*40)
+    # print ("min=%d, max=%d" % (min, max))
+    # exit(1)
 
     if g_op == "bisect":
         print("Performing 'bisect' performance test.")
