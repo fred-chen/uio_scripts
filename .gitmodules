@@ -4,3 +4,4 @@
 [submodule "cctf"]
 	path = cctf
 	url = https://github.com/fred-chen/cctf.git
+	branch = main
