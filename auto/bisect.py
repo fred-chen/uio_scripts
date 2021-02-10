@@ -18,12 +18,13 @@ g_narrow = 3
 g_kiops = 300
 g_results = []
 g_op = "bisect"  # bisect or daily
+g_repeats = 1
 
 def usage(errmsg=""):
     if(errmsg != ""):
         sys.stderr.write("\nERROR: %s\n\n" % errmsg)
     just = len("usage: %s" % (os.path.basename(sys.argv[0])))
-    print("usage: %s  [ -c|--config configfile.json ] commit1 commit2" % (os.path.basename(sys.argv[0])))
+    print("usage: %s  [ -c|--config configfile.json ] [ -r repeats ] commit1 commit2" % (os.path.basename(sys.argv[0])))
     print("%s  [ -m|--method bisect ] [ -k kiops ] [ --narrow num_commits ] " % (' '.rjust(just)))
     print("%s  [ -m|--method everyn ] [ --narrow num_commits ] " % (' '.rjust(just)))
     print("%s  [ -m|--method daily  ] [ --narrow num_days ] " % (' '.rjust(just)))
@@ -32,6 +33,7 @@ def usage(errmsg=""):
     print("")
     print("options:")
     print("  -c, --config : config file path.")
+    print("  -r           : repeat test for 'repeats' times.")
     print("  -m bisect    : checkout middle commits and run bisect perf test against it.")
     print("  -m everyn    : checkout every n commits and run bisect perf test against it.")
     print("  -m daily     : checkout the last commit in every num_days and run perf test everytime.")
@@ -47,11 +49,11 @@ def usage(errmsg=""):
     exit(1)
 
 def handleopts():
-    global g_conf, g_conf_file, g_runtime_dir, g_c1, g_c2, g_narrow, g_kiops, g_op
+    global g_conf, g_conf_file, g_runtime_dir, g_c1, g_c2, g_narrow, g_kiops, g_op, g_repeats
 
     conf_file = "%s/auto.json" % (os.path.dirname(os.path.realpath(__file__)))
     try:
-        options, args = getopt.gnu_getopt(sys.argv[1:], "hc:k:m:", ["help", "configfile=", "narrow=", "method="])
+        options, args = getopt.gnu_getopt(sys.argv[1:], "hc:k:m:r:", ["help", "configfile=", "narrow=", "method="])
     except getopt.GetoptError as err:
         usage(err)
     for o, a in options:
@@ -63,6 +65,8 @@ def handleopts():
             g_narrow = int(a)
         if(o in ('-k', '')):
             g_kiops = int(a)
+        if(o in ('-r', '')):
+            g_repeats = int(a)
         if(o in ('-m', '--method')):
             g_op = a
 
@@ -325,12 +329,12 @@ if __name__ == "__main__":
     idx1, idx2 = -1, -1
     for i in range(len(clist)):
         hash = clist[i][0]
-        if g_c1 == hash or g_c2 == hash:
-            if idx1 == -1:  # idx1 not set yet
-                idx1 = i
-            else:
-                idx2 = i
-                break
+        if g_c1 == hash:
+            idx1 = i
+        if g_c2 == hash:
+            idx2 = i
+    if idx1 == -1 or idx2 == -1:
+        print ("can not find '%s' or '%s' in git commit history!" % (g_c1, g_c2))
     if idx1 > idx2:
         min, max = idx2, idx1
     else:
@@ -366,11 +370,13 @@ if __name__ == "__main__":
         for c in clist:
             print ("|".join(c))
     elif g_op == "daily":  # daily
-        print("Performing 'daily' performance test at the last commits of every %d days." % (g_narrow))
-        daily(clist, g_narrow)
+        print("Performing 'daily' performance test at the last commits of every %d days. repeats: %d." % (g_narrow, g_repeats))
+        for i in range(g_repeats):
+            daily(clist, g_narrow)
     elif g_op == "everyn":
-        print("Performing 'every_%d_commits' performance test." % (g_narrow))
-        everyn(clist, g_narrow)
+        print("Performing 'every_%d_commits' performance test. repeats: %d." % (g_narrow, g_repeats))
+        for i in range(g_repeats):
+            everyn(clist, g_narrow)
     else:
         usage("method '%s' is not supported." % (g_op))
 
