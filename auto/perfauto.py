@@ -241,9 +241,7 @@ def build(build_server, wait=True):
             if not co.succ():
                 common.log("failed make command: '%s'" % (co.cmdline), 1)
                 return None
-        return cos
-    else:
-        return cos
+    return cos
 
 def build_bin(build_server, wait=True):
     '''
@@ -285,9 +283,7 @@ def build_bin(build_server, wait=True):
             if not co.succ():
                 common.log("failed build bin. command: '%s'" % (co.cmdline), 1)
                 return None
-        return cos
-    else:
-        return cos
+    return cos
 
 def cio_running(federation_target):
     '''
@@ -363,9 +359,7 @@ def shutdown_cluster(federation_targets, force=True, wait=True):
             if not co.succ():
                 common.log("failed when sending shutdown cmd to uniio.")
                 return None
-        return cos
-    else:
-        return cos
+    return cos
 
 def replace_rpm(federation_targets, build_server, force=True):
     '''
@@ -492,10 +486,7 @@ def discard_drives(federation_targets, wait=True):
             if not co.succ():
                 common.log("failed when discarding drives.")
                 return None
-            else:
-                return cos
-    else:
-        return cos
+    return cos
 
 def init_backend(federation_targets, force=True, wait=True):
     if not federation_targets:
@@ -514,10 +505,7 @@ def init_backend(federation_targets, force=True, wait=True):
             if not co.succ():
                 common.log("failed when initializing uniio.")
                 return None
-            else:
-                return cos
-    else:
-        return cos
+    return cos
 
 def boot_cluster(federation_targets):
     # start objmgr and objmgr-fab on all uniio nodes
