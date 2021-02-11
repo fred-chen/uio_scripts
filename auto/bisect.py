@@ -137,13 +137,9 @@ def get_clist(build_server):
 
 def get_iops(logpath):
     iops, iops_str = None, None
-    uiodir = "{0}/..".format(os.path.dirname(os.path.realpath(__file__)))
-    path_showfio = "{0}/client/showfio.py".format(uiodir)
-    rt, path_results, err = me.exe("tail {log} | grep 'log location' | awk '{{print $3}}'".format(log=logpath))
-    if path_results:
-        cmd = "{showfio} $(ls {path}/fio_output/[^fill]*) | grep 'Total: IOPS:' | awk '{{print $3}}' ".format(showfio=path_showfio, path=path_results)
-        rt, iops_str, stderr = me.exe(cmd)
-        iops = int(iops_str.split("@")[0]) if iops_str else None
+    rt, path_results, err = me.exe("tail -100 {log} | grep 'log location' | awk '{{print $3}}'".format(log=logpath))
+    rt, iops_str    , err = me.exe("tail -100 {log} | grep 'Total: IOPS:' | awk '{{print $3}}' ".format(log=logpath))
+    iops = int(iops_str.split("@")[0]) if iops_str else None
     return iops, iops_str, path_results
 
 def bisect(clist, comp_iops, narrow=3, runlast=False):
