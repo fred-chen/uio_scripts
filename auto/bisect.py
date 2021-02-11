@@ -381,10 +381,12 @@ if __name__ == "__main__":
     elif g_op == "daily":  # daily
         print("Performing 'daily' performance test at the last commits of every %d days. repeats: %d." % (g_narrow, g_repeats))
         for i in range(g_repeats):
+            print ("ROUND %d" % i)
             daily(clist, g_narrow)
     elif g_op == "everyn":
         print("Performing 'every_%d_commits' performance test. repeats: %d." % (g_narrow, g_repeats))
         for i in range(g_repeats):
+            print ("ROUND %d" % i)
             everyn(clist, g_narrow)
     else:
         usage("method '%s' is not supported." % (g_op))
