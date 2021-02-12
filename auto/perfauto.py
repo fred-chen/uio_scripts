@@ -990,6 +990,7 @@ def perf_test(client_targets, federation_targets, fill=0):
 if __name__ == "__main__":
     conf = handleopts()
     if not conf: exit(1)
+    start = time.time()
 
     client_targets, federation_targets, build_server = prep_targets()
     if not client_targets or not federation_targets or not build_server: exit(1)
@@ -1024,5 +1025,6 @@ if __name__ == "__main__":
         if not perf_test(client_targets, federation_targets, g_fill): exit(1)
     
     # discard_drives(federation_targets)
-    common.log("DONE.")
+    dur = time.time() - start
+    common.log("DONE. REALTIME: %d seconds." % (dur))
     exit(0)

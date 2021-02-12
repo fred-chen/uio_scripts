@@ -6,7 +6,7 @@ a script automatically finds out which commit causes the performance regression
 @author: fred
 '''
 
-import sys, os, getopt, json, uuid, datetime
+import sys, os, getopt, json, uuid, datetime, time
 sys.path.append('%s/../cctf' % (os.path.dirname(os.path.realpath(__file__))))
 from cctf import gettarget, me
 
@@ -157,7 +157,6 @@ def bisect(clist, comp_iops, narrow=3, runlast=False):
 
     top_commit = clist[0][0]; bottom_commit = clist[len(clist)-1][0]
     print ("\n\nbisect: top_commit=%s, bottom_commit=%s, num_commits=%d, compare_iops=%d, narrow_down=%d" % (top_commit, bottom_commit, len(clist), g_kiops*1000, g_narrow))
-    print ("-" * 80)
     if not clist or len(clist) <= narrow:
         return []
     if not runlast:
@@ -215,7 +214,6 @@ def daily(clist, days):
         for commit in clist:
             if commit[0] == hash: break
         print ("\n\ndaily (every %d days): %s" % (days, " ".join(date_strs)))
-        print ("-" * 80)
         result = run_commit(commit)
         g_results.append(result)
     
@@ -244,7 +242,6 @@ def everyn(clist, num_commits):
         commit = commits[idx]
         commit_hash_strs = [ "%s" % (c[0]) for c in commits[idx:] ]
         print ("\n\\neveryn (every %d commits): %s" % (num_commits, " ".join(commit_hash_strs)))
-        print ("-" * 80)
         result = run_commit(commit)
         g_results.append(result)
     print_summary(g_results, clist)
@@ -294,22 +291,28 @@ def run_commit(commit):
     path_perfauto = "{0}/perfauto.py".format(os.path.dirname(os.path.realpath(__file__)))
     hash = commit[0]
     logpath = "{0}.{1}.out".format(hash, str(uuid.uuid1()))
+
+    print ("-" * 80)
     sys.stdout.write ( "testing {0} log: {1}\n".format( "|".join(commit), logpath ) ); sys.stdout.flush()
 
-    cmd = "{0} -c {1} -u --ref={2} -p --fill 600 --fullmap > {3} ".format(path_perfauto, g_conf_file, hash, logpath)
-    iops = None; path = None
-    succ = me.succ(cmd)
+    cmd   = "{0} -c {1} -u --ref={2} -p --fill 600 --fullmap > {3} ".format(path_perfauto, g_conf_file, hash, logpath)
+    iops  = None; path = None
+    start = time.time()
+    succ  = me.succ(cmd)
+    dur   = time.time() - start
     if not succ:  # execution fail
-        sys.stdout.write( "  FAIL!! {0} log: {1}\n".format( "|".join(commit), logpath ) )
+        sys.stdout.write( "FAIL!! {0} log: {1}\nREALTIME: {2} seconds.\n".format( "|".join(commit), logpath, dur) )
     else:
         iops, iops_str, path = get_iops(logpath)
-        sys.stdout.write( "  IOPS: {2} ref: {0} log: {1}\n".format( "|".join(commit), logpath, iops_str ) )
+        sys.stdout.write( "IOPS: {2} ref: {0} log: {1}\nREALTIME: {3} seconds.\n".format( "|".join(commit), logpath, iops_str, dur) )
     if os.path.exists(path):
         me.exe("mv {0} {1}/".format(logpath, path))
     if iops:
         result = [ hash, iops ]
     else:   # can't get iops for this round, retry with the closest commits
         result = [ hash, 0 ]
+    print ("-" * 80)
+    print ("")
     
     return result
 
