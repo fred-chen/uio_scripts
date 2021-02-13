@@ -241,7 +241,7 @@ def everyn(clist, num_commits):
     for idx in range(len(commits)):
         commit = commits[idx]
         commit_hash_strs = [ "%s" % (c[0]) for c in commits[idx:] ]
-        print ("\n\\neveryn (every %d commits): %s" % (num_commits, " ".join(commit_hash_strs)))
+        print ("\n\neveryn (every %d commits): %s" % (num_commits, " ".join(commit_hash_strs)))
         result = run_commit(commit)
         g_results.append(result)
     print_summary(g_results, clist)
@@ -295,17 +295,17 @@ def run_commit(commit):
     print ("-" * 80)
     sys.stdout.write ( "testing {0} log: {1}\n".format( "|".join(commit), logpath ) ); sys.stdout.flush()
 
-    cmd   = "{0} -c {1} -u --ref={2} -p --fill 600 --fullmap > {3} ".format(path_perfauto, g_conf_file, hash, logpath)
+    cmd   = "{0} -c {1} -u --ref={2} -p --fill 600 --fullmap --uioonly > {3} ".format(path_perfauto, g_conf_file, hash, logpath)
     iops  = None; path = None
     start = time.time()
     succ  = me.succ(cmd)
     dur   = time.time() - start
     if not succ:  # execution fail
-        sys.stdout.write( "FAIL!! {0} log: {1}\nREALTIME: {2} seconds.\n".format( "|".join(commit), logpath, dur) )
+        sys.stdout.write( "FAIL!! {0} log: {1}\nREALTIME: {2:.0f} seconds.\n".format( "|".join(commit), logpath, dur) )
     else:
         iops, iops_str, path = get_iops(logpath)
-        sys.stdout.write( "IOPS: {2} ref: {0} log: {1}\nREALTIME: {3} seconds.\n".format( "|".join(commit), logpath, iops_str, dur) )
-    if os.path.exists(path):
+        sys.stdout.write( "IOPS: {2} ref: {0} log: {1}\nREALTIME: {3:.0f} seconds.\n".format( "|".join(commit), logpath, iops_str, dur) )
+    if path and os.path.exists(path):
         me.exe("mv {0} {1}/".format(logpath, path))
     if iops:
         result = [ hash, iops ]
@@ -321,9 +321,9 @@ if __name__ == "__main__":
 
     build_server = get_build_server()
     clist = get_clist(build_server)  # [ [hash, committer date, author name, desc], ...  ]
+    clist = sorted(clist, key=lambda l: l[1], reverse=True)
     if not g_c2:    # no second commit specified, use top commit by default
         g_c2 = clist[0][0]
-    clist = sorted(clist, key=lambda l: l[1], reverse=True)
     # print ("="*40+"clist start (%d)" % (len(clist))+"="*40)
     # for c in clist:
     #     print (c)
@@ -346,10 +346,10 @@ if __name__ == "__main__":
     else:
         min, max = idx1, idx2
     clist = clist[min:max+1]
-    # print ("="*40+"clist sub start (%d)" % (len(clist))+"="*40)
-    # for c in clist:
-    #     print (c)
-    # print ("="*40+"clist sub end (%d)" % (len(clist))+"="*40)
+    print ("="*40+" clist start (%d) " % (len(clist))+"="*40)
+    for c in clist:
+        print (c)
+    print ("="*40+" clist end   (%d) " % (len(clist))+"="*40)
     # print ("min=%d, max=%d" % (min, max))
     # exit(1)
 

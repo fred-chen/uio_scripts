@@ -19,6 +19,7 @@ g_boot_only = False
 g_update = False
 g_ref = None
 g_binonly = None
+g_uioonly = None
 g_init = False
 g_perftest = False
 g_fullmap = False
@@ -52,6 +53,7 @@ def usage(errmsg=""):
         "  -u, --update:      update uniio build" "\n"
         "      --ref:         use along with '-u', checkout a given git reference." "\n"
         "      --binonly:     use along with '-u', only update cio_array binary." "\n"
+        "      --uioonly:     use along with '-u', only update uniio rpm only." "\n"
         "  -i, --init:        reinit uniio federation" "\n"
         "  -p, --perftest:    run perftest" "\n"
         "      --cpudata:     use along with '-p', collect cpu data as svg files while performance test is running" "\n"
@@ -63,10 +65,10 @@ def usage(errmsg=""):
     exit(1)
 
 def handleopts():
-    global g_conf, g_runtime_dir, g_force, g_shutdown_only, g_boot_only, g_update, g_init, g_perftest, g_binonly, g_fullmap, g_cpudata, g_fill, g_createluns, g_delluns_only, g_ref, g_init_backend_only
+    global g_conf, g_runtime_dir, g_force, g_shutdown_only, g_boot_only, g_update, g_init, g_perftest, g_binonly, g_fullmap, g_cpudata, g_fill, g_createluns, g_delluns_only, g_ref, g_init_backend_only, g_uioonly
     conf_file = "%s/auto.json" % (os.path.dirname(os.path.realpath(__file__)))
     try:
-        options, args = getopt.gnu_getopt(sys.argv[1:], "hc:fsbuipd", ["help", "configfile=","force","shutdown","boot","update","init","perftest", "binonly=", "fullmap", "cpudata", "fill=", "createluns=","deleteluns", "ref="])
+        options, args = getopt.gnu_getopt(sys.argv[1:], "hc:fsbuipd", ["help", "configfile=","force","shutdown","boot","update","init","perftest", "binonly=", "uioonly", "fullmap", "cpudata", "fill=", "createluns=","deleteluns", "ref="])
     except getopt.GetoptError as err:
         usage(err)
     for o, a in options:
@@ -88,6 +90,8 @@ def handleopts():
             g_ref = a
         if(o in ('', '--binonly')):
             g_binonly = a
+        if(o in ('', '--uioonly')):
+            g_uioonly = True
         if(o in ('-i', '--init')):
             g_init = True
         if(o in ('-p', '--perftest')):
@@ -185,61 +189,52 @@ def build(build_server, wait=True):
     global g_runtime_dir
     gitcmd = get_gitcmd()
     a,b,c,git_ssh_identityfile = g_conf["build_server"]  # [IP, username, password, git_ssh_identityfile]
-    cos = []
+
     shs = []
-    for i in range(4):  # use 4 shells for parallel compilation
+    cos = []
+    if g_uioonly:
+        repos = ['uniio']
+    else:
+        repos = ['uniio', 'uniio-ui', 'sysmgmt', 'nasmgmt']
+
+    # build all repos in parallel
+    for repo in repos:
         sh = build_server.newshell()
         if not sh: 
             return None
         shs.append(sh)
-    for sh in shs:
+
+        # prepare shell
         cos.append(sh.exe("cd /tmp", wait=False))
         cos.append(sh.exe("export GIT_SSH_COMMAND=\"ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o IdentityFile=%s -o ProxyCommand='ssh -q -W %%h:%%p evidence.orcadt.com'\"" % (git_ssh_identityfile), wait=False))
 
-    sh0 = shs[0]
-    sh1 = shs[1]
-    sh2 = shs[2]
-    sh3 = shs[3]
-    # git clone all repos in parallel
-    repos = ('uniio', 'uniio-ui', 'sysmgmt', 'nasmgmt')
-    i = 0
-    for repo in repos:
+        # clone repo
         checkout = g_conf["%s_checkout"%(repo)] if g_conf.has_key("%s_checkout"%(repo)) else "default"
         cmd = "[[ -e '%s/%s' ]] && { cd %s/%s && git fetch; } || { %s clone --recurse-submodules git@github.com:uniio/%s.git %s/%s; }" \
                 % (g_runtime_dir, repo, g_runtime_dir, repo, gitcmd, repo, g_runtime_dir, repo)
-        cos.append( shs[i].exe(cmd, wait=False) )
+        cos.append( sh.exe(cmd, wait=False) )
         if checkout != "default": # checkout desired branch or tag or commit
             cmd = "cd %s/%s && %s checkout %s" % (g_runtime_dir, repo, gitcmd, checkout)
-            cos.append( shs[i].exe(cmd, wait=False) )
+            cos.append( sh.exe(cmd, wait=False) )
         cmd = "cd %s/%s && %s pull --no-edit || true" % (g_runtime_dir, repo, gitcmd)
-        cos.append( shs[i].exe(cmd, wait=False) )
+        cos.append( sh.exe(cmd, wait=False) )
         cmd = "cd %s/%s && %s log --pretty=format:'%%h|%%ci|%%an|%%s' | head -8 || true" % (g_runtime_dir, repo, gitcmd)
-        cos.append( shs[i].exe(cmd, wait=False) )
-        i += 1
+        cos.append( sh.exe(cmd, wait=False) )
 
-    # cmake repos
-    co = sh0.exe("cd %s/%s && mkdir -p build && cd build && cmake3 -DCMAKE_BUILD_TYPE=Release .." % (g_runtime_dir, "uniio"), wait=False)
-    cos.append(co)
-    co = sh1.exe("cd %s/%s && mkdir -p build && cd build && cmake3 -DCMAKE_BUILD_TYPE=Release .." % (g_runtime_dir, "sysmgmt"), wait=False)
-    cos.append(co)
-    co = sh2.exe("cd %s/%s && mkdir -p build && cd build && cmake3 -DCMAKE_BUILD_TYPE=Release .." % (g_runtime_dir, "nasmgmt"), wait=False)
-    cos.append(co)
-    co = sh3.exe("cd %s/%s && mkdir -p build_debug && cd build_debug && cmake3 .." % (g_runtime_dir, "uniio-ui"), wait=False)
-    cos.append(co)
-
-    # make repos
-    co = sh0.exe("cd %s/%s/build && rm -f *.rpm && make -j20 package" % (g_runtime_dir, "uniio"), wait=False)
-    cos.append(co)
-    co = sh1.exe("cd %s/%s/build && rm -f *.rpm && make -j20 package" % (g_runtime_dir, "sysmgmt"), wait=False)
-    cos.append(co)
-    co = sh2.exe("cd %s/%s/build && rm -f *.rpm && make -j20 package" % (g_runtime_dir, "nasmgmt"), wait=False)
-    cos.append(co)
-    co = sh3.exe("cd %s/%s/build_debug && rm -f *.rpm && make -j20 package" % (g_runtime_dir, "uniio-ui"), wait=False)
-    cos.append(co)
+        # cmake repo
+        if repo == "uniio-ui":
+            co = sh.exe("cd %s/%s && mkdir -p build_debug && cd build_debug && cmake3 .." % (g_runtime_dir, repo), wait=False)
+            co = sh.exe("cd %s/%s/build_debug && rm -f *.rpm && make -j20 package" % (g_runtime_dir, repo), wait=False)
+            cos.append(co)
+        else:
+            co = sh.exe("cd %s/%s && mkdir -p build && cd build && cmake3 -DCMAKE_BUILD_TYPE=Release .." % (g_runtime_dir, repo), wait=False)
+            cos.append(co)
+            co = sh.exe("cd %s/%s/build && rm -f *.rpm && make -j20 package" % (g_runtime_dir, repo), wait=False)
+            cos.append(co)
     if wait:
         for co in cos:
             if not co.succ():
-                common.log("failed make command: '%s'" % (co.cmdline), 1)
+                common.log("failed build command: '%s'" % (co.cmdline), 1)
                 return None
     return cos
 
@@ -380,19 +375,20 @@ def replace_rpm(federation_targets, build_server, force=True):
     # wait for build job to end
     for co in cos_build:
         if not co.succ():
-            common.log("failed when discard backend drives.")
+            common.log("failed when build.")
             return False
 
     # download from build server and upload rpm packages to federation nodes:
     me.exe("rm -rf /tmp/rpms && mkdir /tmp/rpms")
     if not build_server.download("/tmp/rpms/", "%s/uniio/build/object-array-*.rpm" % (g_runtime_dir)):                    # download uniio rpms
         return False
-    if not build_server.download("/tmp/rpms/", "%s/nasmgmt/build/object-array-nasmgmt-*.rpm" % (g_runtime_dir)):          # download nasmgmt rpms
-        return False
-    if not build_server.download("/tmp/rpms/", "%s/sysmgmt/build/object-array-sysmgmt-*.rpm" % (g_runtime_dir)):          # download sysmgmt rpms
-        return False
-    if not build_server.download("/tmp/rpms/", "%s/uniio-ui/build_debug/object-array-uniio-ui-*.rpm" % (g_runtime_dir)):  # download uniio-ui rpms
-        return False
+    if not g_uioonly:
+        if not build_server.download("/tmp/rpms/", "%s/nasmgmt/build/object-array-nasmgmt-*.rpm" % (g_runtime_dir)):          # download nasmgmt rpms
+            return False
+        if not build_server.download("/tmp/rpms/", "%s/sysmgmt/build/object-array-sysmgmt-*.rpm" % (g_runtime_dir)):          # download sysmgmt rpms
+            return False
+        if not build_server.download("/tmp/rpms/", "%s/uniio-ui/build_debug/object-array-uniio-ui-*.rpm" % (g_runtime_dir)):  # download uniio-ui rpms
+            return False
 
     for t in federation_targets:
         t.exe("rm -rf /tmp/rpms && mkdir -p /tmp/rpms")
@@ -944,6 +940,10 @@ def perf_test(client_targets, federation_targets, fill=0):
         fill: fill the luns first, for a given time
         return when all jobs are done.
     '''
+    # print threadtable.ini contents on all federation servers
+    for t in federation_targets:
+        t.exe("cat /etc/objblk/threadtable.ini")
+
     status_str = ""
     jobdesc, fio_job_dir, fio_cos, fio_driver = fio_run(client_targets, fill)
     if not fio_cos:
@@ -972,6 +972,7 @@ def perf_test(client_targets, federation_targets, fill=0):
     me.exe("mkdir -p %s" % (logdir))
     if not fio_driver.download(logdir, "%s/*" % (fio_job_dir)):
         return False
+
     # download counter logs and cpu data svg files from federation nodes
     for t in federation_targets:
         counterdir = "%s/counter_%s" % (logdir, t.address)
