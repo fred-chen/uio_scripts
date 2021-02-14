@@ -329,7 +329,10 @@ def attach_luns(federation_targets):
     if not t:
         common.log("fabric manager is not running on all federation nodes.", 1)
         return False
-    luns = t.exe("cioctl list | grep GB | awk '{print \$2}' | grep -v '^-'").getlist()
+    for i in range(3):
+        luns = t.exe("cioctl list | grep GB | awk '{print \$2}' | grep -v '^-'").getlist()
+        if luns: break
+        time.sleep(5)
     for lun in luns:
         if not t.exe("cioctl attach %s" % (lun)).succ():
             return False
