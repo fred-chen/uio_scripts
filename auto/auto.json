@@ -11,7 +11,7 @@
         ["192.168.101.169", "root", "password"]
     ],
 
-    "build_server" : ["192.168.100.120", "root", ".id_rsa", "/root/fred/.id_rsa"],
+    "build_server" : ["192.168.100.120", "root", ".id_rsa", "/home/fred/.id_rsa"],
     "build_server_git_proxy" : "socks5://192.168.100.120:8899",
     "uniio_checkout" : "v2.0_x64",
     
