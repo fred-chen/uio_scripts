@@ -867,7 +867,6 @@ def fio_run(client_targets, fill=0):
             return None, None, None, None
     cmd = "%s/uio_scripts/client/runfio.sh --jobs '%s' --qdepth '%s' --clients %s --profiledir %s -t %s %s | tee %s/fiorunning.log" % (g_runtime_dir, nj_str, qd_str, clients, fio_job_dir, runtime_str, jobdesc, g_runtime_dir)
     cos.append(sh_fio.exe(cmd, wait=False))
-    common.log("long task running on '%s': %s" % (fio_driver, cmd))
 
     return (jobdesc, fio_job_dir, cos, fio_driver)
 
