@@ -64,18 +64,15 @@ main() {
         done
     elif [[ $ONLY == "tblonly" ]]; then
         echo "PERFORMING 'THREADTABLE REPLACEMENT' TEST... "
-        for tbl in $THREADTABLEDIR/*
-        do
+        for tbl in $THREADTABLEDIR/*.ini; do
             CMD="$PERFAUTO -c $CONF --threadtable=$tbl -fsdi -p --fill=$FILLTIME"
             echo "  '$tbl' CMD: '$CMD'"
             eval $CMD || break
         done
     else
         echo "PERFORMING 'BINARY AND THREADTABLE REPLACEMENT' TEST... "
-        for bin in $BINDIR/*
-        do
-            for tbl in $THREADTABLEDIR/*
-            do
+        for bin in $BINDIR/*; do
+            for tbl in $THREADTABLEDIR/*.ini; do
                 CMD="$PERFAUTO -c $CONF -u --binonly=$bin --threadtable=$tbl -p --fill=$FILLTIME"
                 echo "  '$bin' and '$tbl' CMD: '$CMD'"
                 eval $CMD || break
