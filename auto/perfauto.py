@@ -28,6 +28,7 @@ g_fill = 0
 g_createluns = 0
 g_delluns_only = False
 g_init_backend_only = False
+g_threadtable = None
 
 def usage(errmsg=""):
     if(errmsg != ""):
@@ -41,6 +42,7 @@ def usage(errmsg=""):
     print("%s [ -i|--init ]" % (' '.rjust(just)))
     print("%s [ -p|--perftest ] [ --cpudata ] [ --fill sec ]" % (' '.rjust(just)))
     print("%s [ --createluns num ] [ --fullmap ] [ --deleteluns ]" % (' '.rjust(just)))
+    print("%s [ --threadtable threadtable_path ]" % (' '.rjust(just)))
     print(
         "\n" "Coordinate UniIO nodes, build server and fio clients for performance test." "\n" 
         "\n" 
@@ -61,14 +63,15 @@ def usage(errmsg=""):
         "  --createluns:      create a given number of luns" "\n"
         "     --fullmap:      use along with '--createluns', all clients see all luns ( clients see different luns if not specified )" "\n"
         "  --deleteluns:      delete all existing luns" "\n"
+        "  --threadtable:     use a local threadtable.ini file to replace those on remote nodes" "\n"
         )
     exit(1)
 
 def handleopts():
-    global g_conf, g_runtime_dir, g_force, g_shutdown_only, g_boot_only, g_update, g_init, g_perftest, g_binonly, g_fullmap, g_cpudata, g_fill, g_createluns, g_delluns_only, g_ref, g_init_backend_only, g_uioonly
+    global g_conf, g_runtime_dir, g_force, g_shutdown_only, g_boot_only, g_update, g_init, g_perftest, g_binonly, g_fullmap, g_cpudata, g_fill, g_createluns, g_delluns_only, g_ref, g_init_backend_only, g_uioonly, g_threadtable
     conf_file = "%s/auto.json" % (os.path.dirname(os.path.realpath(__file__)))
     try:
-        options, args = getopt.gnu_getopt(sys.argv[1:], "hc:fsbuipd", ["help", "configfile=","force","shutdown","boot","update","init","perftest", "binonly=", "uioonly", "fullmap", "cpudata", "fill=", "createluns=","deleteluns", "ref="])
+        options, args = getopt.gnu_getopt(sys.argv[1:], "hc:fsbuipd", ["help", "configfile=","force","shutdown","boot","update","init","perftest", "binonly=", "uioonly", "fullmap", "cpudata", "fill=", "createluns=","deleteluns", "ref=", "threadtable="])
     except getopt.GetoptError as err:
         usage(err)
     for o, a in options:
@@ -106,6 +109,8 @@ def handleopts():
             g_createluns = int(a)
         if(o in ('', '--deleteluns')):
             g_delluns_only = True
+        if(o in ('', '--threadtable')):
+            g_threadtable = a
      
     # load configuration file
     f = open(conf_file)
@@ -126,6 +131,8 @@ def handleopts():
         conf["uniio_checkout"] = g_ref   # a git commit to checkout
     if g_binonly and g_binonly != 'build' and (not me.is_command_executable(g_binonly)):
         usage("%s does not exist or not executable." % (g_binonly))
+    if g_threadtable and ( (not os.path.exists(g_threadtable)) or (not os.path.isfile(g_threadtable)) ):
+        usage("%s does not exist or is not a regular file." % (g_threadtable))
     g_conf = conf
     return conf
 
@@ -934,6 +941,12 @@ def showfio(path):
     print ("\n%s\n" % (out))
     return True
 
+def replace_threadtable(federation_targets, g_threadtable):
+    for t in federation_targets:
+        if not t.upload("%s" % (g_threadtable), "/etc/objblk/threadtable.ini"):
+            return False
+    return True
+
 def perf_test(client_targets, federation_targets, fill=0):
     '''
         run performance test.
@@ -990,6 +1003,7 @@ def perf_test(client_targets, federation_targets, fill=0):
     showfio (logdir)
     return True
 
+
 if __name__ == "__main__":
     conf = handleopts()
     if not conf: exit(1)
@@ -1005,6 +1019,9 @@ if __name__ == "__main__":
         clear_clients(client_targets)
         if not shutdown_cluster(federation_targets, force=g_force): exit(1)
     
+    if g_threadtable:
+        if not replace_threadtable(federation_targets, g_threadtable): exit(1)
+
     if g_boot_only:
         if not boot_cluster(federation_targets): exit(1)
     
@@ -1021,7 +1038,7 @@ if __name__ == "__main__":
     
     if g_createluns:
         if not create_luns(client_targets, federation_targets, g_createluns): exit(1)
-        
+
     if g_perftest:
         if (g_init or g_update) and (not g_createluns):
             if not create_luns(client_targets, federation_targets, 0): exit(1)
