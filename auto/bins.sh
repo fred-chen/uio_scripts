@@ -6,6 +6,7 @@ THREADTABLEDIR=./threadtables
 ONLY="tblonly"  # or "binonly" or "both"
 FILLTIME=300
 CONF=
+TBLS=
 
 function usage() {
   [[ ! -z $1 ]] && {
@@ -14,7 +15,7 @@ function usage() {
     echo
   }
   len=$(expr length "usage: `basename $0`")
-  printf "usage: `basename $0` -c conf [ -o binonly|tblonly|both ] [ --bindir bin_dir ] [ --tbldir threadtable_dir ]\n"
+  printf "usage: `basename $0` -c conf [ -o binonly|tblonly|both ] [ --bindir bin_dir ] [ --tbldir threadtable_dir ] tbl1 tbl2 ...\n"
   echo
   echo "options:"
   echo "  -c conf    : config file path"
@@ -42,9 +43,11 @@ handleopts() {
       esac
   done
   
-  [[ "$ONLY" != "tblonly" ]] && [[ "$ONLY" != "binonly" ]] && [[ "$ONLY" != "both" ]] && { usage "-o must be followed by 'tblonly' or 'binonly'"; }
+  [[ $# -ne 0 ]] && TBLS="$@"
+  [[ "$ONLY" != "tblonly" ]] && [[ "$ONLY" != "binonly" ]] && [[ "$ONLY" != "both" ]] && usage "-o must be followed by 'tblonly' or 'binonly'"
   [[ "$ONLY" == "binonly" || "$ONLY" == "both" ]] && [[ ! -e "$BINDIR" ]] && echo "'$BINDIR' doesn't exist." && exit 1
-  [[ "$ONLY" == "tblonly" || "$ONLY" == "both" ]] && [[ ! -e "$THREADTABLEDIR" ]] && echo "'$THREADTABLEDIR' doesn't exist." && exit 1
+  [[ "$ONLY" == "tblonly" || "$ONLY" == "both" && -z "$TBLS" ]] && [[ ! -e "$THREADTABLEDIR" ]] && echo "'$THREADTABLEDIR' doesn't exist." && exit 1
+  [[ -z "$TBLS" ]] && TBLS=$THREADTABLEDIR/*.ini
   [[ -z "$CONF" ]] && { usage "must specify a config file with '-c'"; }
 }
 
@@ -64,7 +67,7 @@ main() {
         done
     elif [[ $ONLY == "tblonly" ]]; then
         echo "PERFORMING 'THREADTABLE REPLACEMENT' TEST... "
-        for tbl in $THREADTABLEDIR/*.ini; do
+        for tbl in $TBLS; do
             CMD="$PERFAUTO -c $CONF --threadtable=$tbl -fsdi -p --fill=$FILLTIME"
             echo "  '$tbl' CMD: '$CMD'"
             eval $CMD || break
@@ -72,7 +75,7 @@ main() {
     else
         echo "PERFORMING 'BINARY AND THREADTABLE REPLACEMENT' TEST... "
         for bin in $BINDIR/*; do
-            for tbl in $THREADTABLEDIR/*.ini; do
+            for tbl in $TBLS; do
                 CMD="$PERFAUTO -c $CONF -u --binonly=$bin --threadtable=$tbl -p --fill=$FILLTIME"
                 echo "  '$bin' and '$tbl' CMD: '$CMD'"
                 eval $CMD || break
