@@ -47,26 +47,26 @@ handleopts() {
   [[ "$ONLY" != "tblonly" ]] && [[ "$ONLY" != "binonly" ]] && [[ "$ONLY" != "both" ]] && usage "-o must be followed by 'tblonly' or 'binonly'"
   [[ "$ONLY" == "binonly" || "$ONLY" == "both" ]] && [[ ! -e "$BINDIR" ]] && echo "'$BINDIR' doesn't exist." && exit 1
   [[ "$ONLY" == "tblonly" || "$ONLY" == "both" && -z "$TBLS" ]] && [[ ! -e "$THREADTABLEDIR" ]] && echo "'$THREADTABLEDIR' doesn't exist." && exit 1
-  [[ -z "$TBLS" ]] && TBLS=$THREADTABLEDIR/*.ini
+  [[ -z "$TBLS" ]] && TBLS=`ls -d $THREADTABLEDIR/*.ini`
   [[ -z "$CONF" ]] && { usage "must specify a config file with '-c'"; }
 }
 
 
 main() {
     handleopts "$@"
-    echo $0
     SCRIPTDIR=$(dirname $0)
     PERFAUTO=$SCRIPTDIR/perfauto.py
+    BINS=`ls -d $BINDIR/*`
 
     if [[ $ONLY == "binonly" ]]; then
-        echo "PERFORMING 'BINARY REPLACEMENT' TEST... "
-        for bin in $BINDIR/*; do
+        echo "PERFORMING 'BINARY REPLACEMENT' TEST BINS='$BINS' ... "
+        for bin in $BINS; do
             CMD="$PERFAUTO -c $CONF -u --binonly=$bin -p --fill=$FILLTIME"
             echo "  '$bin' CMD: '$CMD'"
             eval $CMD || break
         done
     elif [[ $ONLY == "tblonly" ]]; then
-        echo "PERFORMING 'THREADTABLE REPLACEMENT' TEST... "
+        echo "PERFORMING 'THREADTABLE REPLACEMENT' TEST THREADTABLES='$TBLS' ... "
         for tbl in $TBLS; do
             CMD="$PERFAUTO -c $CONF --threadtable=$tbl -fsdi -p --fill=$FILLTIME"
             echo "  '$tbl' CMD: '$CMD'"
@@ -74,7 +74,9 @@ main() {
         done
     else
         echo "PERFORMING 'BINARY AND THREADTABLE REPLACEMENT' TEST... "
-        for bin in $BINDIR/*; do
+        echo "BINS='$BINS'"
+        echo "THREADTABLES='$TBLS'"
+        for bin in $BINS; do
             for tbl in $TBLS; do
                 CMD="$PERFAUTO -c $CONF -u --binonly=$bin --threadtable=$tbl -p --fill=$FILLTIME"
                 echo "  '$bin' and '$tbl' CMD: '$CMD'"
