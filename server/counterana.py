@@ -414,7 +414,7 @@ def plot_counter_combined():
         chart_title = "combined %s chart" % ("differential" if g_diff else "")
     else:
         plotdatafilename = ("%s.plotdata" % (counter_names[0])).replace('/','_')
-        chart_title = "%s chart" % (counter_names[0] + ("differential" if g_diff else ""))
+        chart_title = "%s chart" % (counter_names[0] + (" differential" if g_diff else ""))
 
     f = open(plotdatafilename, 'w')
     f.write("%s\n" % (header))
