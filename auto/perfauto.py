@@ -768,7 +768,8 @@ def fio_build_job_contents(client_target, fill=0):
     if fill: rw = "write"
 
     # get UNIIO iscsi luns on client
-    cmd = "lsblk -p -o name,vendor | grep UNIIO | awk '{print \$1}'"
+    client_target.exe("lsscsi")  # list lun info
+    cmd = "lsblk -p -o name,vendor | grep -w UNIIO | grep sd | awk '{print \$1}'"
     uio_devs = client_target.exe(cmd).getlist()
     if not uio_devs:  # no uniio iscsi devices on this client
         common.log("no uniio iscsi devices on this client: %s" % (client_target.address), 1)
