@@ -51,13 +51,13 @@ def parse(path):
         entry_name      = stat["hostname"] if stat.has_key("hostname") else stat["jobname"]
         read_iops       = stat["read"]["iops"]
         read_lat        = stat["read"]["lat_ns"]["mean"]
-        read_bw         = stat["read"]["bw_bytes"]
+        read_bw         = stat["read"]["bw_bytes"] if stat["read"].has_key("bw_bytes") else int(stat["read"]["bw"]) * 1024
         read_ios        = stat["read"]["total_ios"]
         read_runtime    = stat["read"]["runtime"]  # ms
         read_total_lat  = read_ios * read_lat
         write_iops      = stat["write"]["iops"]
         write_lat       = stat["write"]["lat_ns"]["mean"]
-        write_bw        = stat["write"]["bw_bytes"]
+        write_bw        = stat["write"]["bw_bytes"] if stat["write"].has_key("bw_bytes") else int(stat["write"]["bw"]) * 1024
         write_ios       = stat["write"]["total_ios"]
         write_runtime   = stat["write"]["runtime"]
         write_total_lat = write_ios * write_lat
