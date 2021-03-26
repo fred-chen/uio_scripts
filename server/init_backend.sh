@@ -148,6 +148,7 @@ function main() {
   if [[ -z "$DEVS" ]]; then
     # get / filesystem device
     ROOTDEV=`mount | grep -w / | awk '{print $1}' | sed 's/[0-9]//g'`
+    [[ ! $ROOTDEV =~ "sd." ]] && ROOTDEV="sda"
     DEVS="`lsblk -lpn -o NAME | grep -w 'sd.' | grep -v $ROOTDEV`"
   fi
 
