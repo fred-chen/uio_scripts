@@ -123,15 +123,6 @@ function init() {
     DISCARD_RUNS=$((DISCARD_RUNS+1))
   }
 
-  mkdir -p ${CORE_MNT}
-  # mount core dump device
-  mkfs -t ext4 ${CORE_MD_PATH} && mount ${CORE_MD_PATH} ${CORE_MNT}
-  mounted=`df -h | grep /var/coredumps | wc -l`
-  [[ $mounted -eq 0 ]] && retuen 1
-
-  sysctl -w kernel.core_pattern=/var/coredumps/core-%e-sig%s-user%u-group%g-pid%p-time%t
-  ulimit -c unlimited
-
   # prepare config.ini for DP backend
   echo '[devicemap]' > /etc/objblk/config.ini
   i=0
@@ -141,6 +132,16 @@ function init() {
     echo "  BackendDisk_${i} = /dev/disk/by-id/wwn-${devices[$d]}-part2" >> /etc/objblk/config.ini
     i=$((i+1))
   done
+
+  mkdir -p ${CORE_MNT}
+  # mount core dump device
+  mkfs -t ext4 ${CORE_MD_PATH} && mount ${CORE_MD_PATH} ${CORE_MNT}
+  mounted=`df -h | grep /var/coredumps | wc -l`
+  [[ $mounted -eq 0 ]] && return 1
+
+  sysctl -w kernel.core_pattern=/var/coredumps/core-%e-sig%s-user%u-group%g-pid%p-time%t
+  ulimit -c unlimited
+
 }
 
 function main() {
