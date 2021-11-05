@@ -32,7 +32,7 @@ uio_scripts/
 
 ### client/plotfio.sh
 
-```
+```bashlike
 功能：对多个 fio 日志文件中的数据进行分类汇总（fio给每个job产生一个日志文件），按时间生成数据走势图。 支持的图形类型为：IOPS，SLAT, CLAT, LAT。
 用法：
 # client/plotfio.sh -h
@@ -45,7 +45,7 @@ examples:
 ```
 
 IOPS 图形的例子：
-![](docs/pics/NSFileHandle%205.png)
+![png](docs/pics/NSFileHandle%205.png)
 
 ## server scripts
 
@@ -147,7 +147,7 @@ ss.obs.cacheMigrateFromWriteToRead[523][counts][UP]: min=310342.0 max=1260108523
 
 2. 观察输出，发现 `ss.obs.cacheMigrateFromWriteToRead` 变化幅度较大(stddev:mean=58.9%)，且趋势是走高 `UP` 。单独打印直方图(-m)查看可疑 counter 的分布情况。
 
-```
+```bashlike
 $ server/counterana.py counter.log -e ss.obs.cacheMigrateFromWriteToRead -m
 building aggregated array ... done.                                        
 ================================================================================
@@ -190,7 +190,7 @@ Histogram for ss.obs.cacheMigrateFromWriteToRead (counts) ... 523 samples.
 
 3. 初步发现该counter的值分布在高位居多，越高越多。最后将该counter的图形走势画出(-g)，进一步查看比对：
 
-```
+```bashlike
 $ server/counterana.py counter.log -e ss.obs.cacheMigrateFromWriteToRead -g
 building aggregated array ... done.                                        
 ================================================================================
@@ -200,11 +200,11 @@ ss.obs.cacheMigrateFromWriteToRead.png
 ```
 
 4. 打开生成的图像文件 `ss.obs.cacheMigrateFromWriteToRead.png` ，将其趋势与其他数据(例如用 `plotfio.sh` 生成的客户端iops或latency图形)交叉对比，分析其持续升高的原因。
-![](docs/pics/NSFileHandle%207.png)
+![png](docs/pics/NSFileHandle%207.png)
 
 5. 或者，也可以将多个相关的 counter 放在同一个图中进行比较：
 
-```
+```bashlike
 $ uio_scripts/server/counterana.py counter.log -e 'ss.obs.cache(?=Miss|Hit)' -gc
  building aggregated array ... done.                                        
 ================================================================================
@@ -217,11 +217,11 @@ ss.obs.cacheMiss[600][counts][UP]: min=454818307.0 max=7578260188.0 mean=3942654
 /root/fred/ss.obs.cacheHitWrite_more.plotdata.png
 ```
 
-![](docs/pics/NSFileHandle%208.png)
+![png](docs/pics/NSFileHandle%208.png)
 
 收集 UniIO counters 的过程大致可以写成下面这样：
 
-```
+```bashlike
 $ cat counters.sh
 #!/usr/bin/env bash
 #usage: ./counters.sh [interval] [runtime]
