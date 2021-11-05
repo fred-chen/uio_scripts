@@ -69,9 +69,9 @@ main() {
   handleopts "$@"
   mkdir -p $outputdir && mkdir -p $logdir && mkdir -p $profiledir
 
-  for qd in $qds
+  for nj in $njobs
   do
-    for nj in $njobs
+    for qd in $qds
     do
       client_args=
       jobstr="$jobtype.qd$qd.njobs$nj"

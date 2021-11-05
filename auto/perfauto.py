@@ -726,7 +726,7 @@ def fio_build_job_contents(client_target, fill=0):
     fio_job_content += "\n" "log_avg_msec=10000" 
     fio_job_content += "\n" "ioengine=libaio" 
     fio_job_content += "\n" "direct=1" 
-    fio_job_content += "\n" "sync=1" 
+    # fio_job_content += "\n" "sync=1" 
     fio_job_content += "\n" "bs=4k"
     dist = g_conf["fio_random_distribution"] if g_conf.has_key("fio_random_distribution") else "random"
     fio_job_content += "\n" "random_distribution=%s" % (dist)
