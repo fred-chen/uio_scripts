@@ -1,0 +1,38 @@
+[global]
+ioengine=libaio
+direct=1
+bs=4k
+random_distribution=random
+group_reporting=1
+runtime=60
+time_based=1
+ramp_time=0
+numjobs=8
+iodepth=8
+rw=randwrite
+
+ss=iops:10%          # iops wave in 10% is considered steady state achieved
+ss_dur=30           # sustain for 5 minutes in steady state
+ss_ramp=5           # start judging steady state since begining
+
+
+[/dev/sdb]
+filename=/dev/sdb
+[/dev/sdc]
+filename=/dev/sdc
+[/dev/sdd]
+filename=/dev/sdd
+[/dev/sde]
+filename=/dev/sde
+[/dev/sdf]
+filename=/dev/sdf
+[/dev/sdg]
+filename=/dev/sdg
+[/dev/sdh]
+filename=/dev/sdh
+[/dev/sdi]
+filename=/dev/sdi
+[/dev/sdj]
+filename=/dev/sdj
+[/dev/sdk]
+filename=/dev/sdk
