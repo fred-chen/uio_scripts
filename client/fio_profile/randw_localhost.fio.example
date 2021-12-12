@@ -1,7 +1,7 @@
 [global]
 ioengine=libaio
 direct=1
-bs=4k
+bs=4096
 random_distribution=random
 group_reporting=1
 runtime=60
