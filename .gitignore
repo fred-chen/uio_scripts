@@ -1,0 +1,5 @@
+**/fio_output*
+**/fio_log*
+**/*.fio
+**/*.log
+**/nohup*

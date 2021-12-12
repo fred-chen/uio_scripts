@@ -1,0 +1,47 @@
+[global]
+ioengine=dev-dax
+norandommap
+time_based
+runtime=360
+group_reporting=1
+clat_percentiles=0
+cpus_allowed_policy=split
+random_generator=tausworthe64
+random_distribution=random
+direct=0
+rw=randwrite
+
+ss=iops:10%          # iops wave in 10% is considered steady state achieved
+ss_dur=300           # sustain for 5 minutes in steady state
+ss_ramp=15           # start judging steady state since begining
+ramp_time=15
+
+# For the dev-dax engine:
+#
+#   IOs always complete immediately
+#   IOs are always direct
+#
+
+iodepth=1
+numjobs=1
+bs=64
+
+#
+# The dev-dax engine does IO to DAX device that are special character
+# devices exported by the kernel (e.g. /dev/dax0.0). The device is
+# opened normally and then the region is accessible via mmap. We do
+# not use the O_DIRECT flag because the device is naturally direct
+# access. The O_DIRECT flags will result in failure. The engine
+# access the underlying NVDIMM directly once the mmapping is setup.
+#
+# Check the alignment requirement of your DAX device. Currently the default
+# should be 2M. Blocksize (bs) should meet alignment requirement.
+#
+# An example of creating a dev dax device node from pmem:
+# ndctl create-namespace --reconfig=namespace0.0 --mode=dax --force
+#
+
+
+
+[dev-dax-1.0]
+filename=/dev/dax0.0
