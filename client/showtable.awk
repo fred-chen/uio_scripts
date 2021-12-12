@@ -25,18 +25,17 @@ BEGIN {
     else
         bs = arr[4]
 
-    # print arr[1] " " arr[2] " " arr[3]
     match($0, "Total: IOPS: ([0-9]+)@([0-9]+)us BW: ([0-9]+)MiB/s READ_IOPS: ([0-9]+)@([0-9]+)us WRITE_IOPS: ([0-9]+)@([0-9]+)us READ_BW: ([0-9]+)MiB/s WRITE_BW: ([0-9]+)MiB/s", arr)
 
-    iops       = arr[1]
-    iops_lat   = arr[2]
-    band_width = arr[3]
-    read_iops  = arr[4]
+    iops           = arr[1]
+    iops_lat       = arr[2]
+    band_width     = arr[3]
+    read_iops      = arr[4]
     read_iops_lat  = arr[5]
-    write_iops = arr[6]
+    write_iops     = arr[6]
     write_iops_lat = arr[7]
-    read_bw    = arr[8]
-    write_bw   = arr[9]
+    read_bw        = arr[8]
+    write_bw       = arr[9]
     if(length(iops) != 0)
         printf "%-10s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-15s %-15s\n", \
                qdepth, njobs, bs, iops, iops_lat, band_width, read_iops, read_iops_lat, write_iops, write_iops_lat, read_bw, write_bw
