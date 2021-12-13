@@ -10,8 +10,8 @@
 
 BEGIN {
     RS="=\n\n"
-    printf "%-10s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-15s %-15s\n", \
-           "qdepth", "njobs", "bs(Bytes)","iops","lat","bw(MiB/s)","read_iops","read_lat","write_iops","write_lat","read_bw(MiB/s)","write_bw(MiB/s)"
+    printf "%-10s %-10s %-10s %-10s %-10s %-10s %-10s %-15s %-10s %-15s %-15s %-15s\n", \
+           "qdepth", "njobs", "bs(Bytes)","iops","lat(us)","bw(MiB/s)","read_iops","read_lat(us)","write_iops","write_lat(us)","read_bw(MiB/s)","write_bw(MiB/s)"
     for(c=0;c<140;c++) printf "="; printf "\n"
 };
 
@@ -25,7 +25,7 @@ BEGIN {
     else
         bs = arr[4]
 
-    match($0, "Total: IOPS: ([0-9]+)@([0-9]+)us BW: ([0-9]+)MiB/s READ_IOPS: ([0-9]+)@([0-9]+)us WRITE_IOPS: ([0-9]+)@([0-9]+)us READ_BW: ([0-9]+)MiB/s WRITE_BW: ([0-9]+)MiB/s", arr)
+    match($0, "Total: IOPS: ([0-9]+)@([0-9.]+)us BW: ([0-9]+)MiB/s READ_IOPS: ([0-9]+)@([0-9.]+)us WRITE_IOPS: ([0-9]+)@([0-9.]+)us READ_BW: ([0-9]+)MiB/s WRITE_BW: ([0-9]+)MiB/s", arr)
 
     iops           = arr[1]
     iops_lat       = arr[2]
@@ -37,8 +37,6 @@ BEGIN {
     read_bw        = arr[8]
     write_bw       = arr[9]
     if(length(iops) != 0)
-        printf "%-10s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-15s %-15s\n", \
+        printf "%-10s %-10s %-10s %-10s %-10s %-10s %-10s %-15s %-10s %-15s %-15s %-15s\n", \
                qdepth, njobs, bs, iops, iops_lat, band_width, read_iops, read_iops_lat, write_iops, write_iops_lat, read_bw, write_bw
 }
-
-
