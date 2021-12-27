@@ -17,7 +17,7 @@ BEGIN {
 
 
 {
-    match($0, "qd([0-9]+).njobs([0-9]+)(.bs([0-9]+))*", arr)
+    match($0, "qd([0-9]+).njobs([0-9]+)(.bs([0-9]+[a-zA-Z]*))*", arr)
     qdepth     = arr[1]
     njobs      = arr[2]
     if(length(arr[4]) == 0)
