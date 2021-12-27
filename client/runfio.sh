@@ -94,7 +94,7 @@ main() {
           [[ ! -e $jobfn ]] && echo "$jobfn doesn't exist." && exit 1 || {
             [[ ! -z "$qd" ]] && sed -i "s/iodepth=[0-9]\+/iodepth=${qd}/g" $jobfn
             [[ ! -z "$nj" ]] && sed -i "s/numjobs=[0-9]\+/numjobs=${nj}/g" $jobfn
-            [[ ! -z "$sz" ]] && sed -i "s/^bs=[0-9]\+/bs=${sz}/g" $jobfn
+            [[ ! -z "$sz" ]] && sed -i "s/^bs=[0-9]\+[a-zA-Z]*/bs=${sz}/g" $jobfn
             [[ ! -z "$runtime" ]] && sed -i "s/runtime=[0-9]\+/runtime=${runtime}/g" $jobfn
             [[ ! -z "$logfn" ]] && sed -i "s|write_bw_log=.\+|write_bw_log=${logfn}|g" $jobfn &&
                                   sed -i "s|write_lat_log=.\+|write_lat_log=${logfn}|g" $jobfn &&
