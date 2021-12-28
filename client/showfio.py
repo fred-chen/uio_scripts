@@ -32,6 +32,11 @@ def parse(path):
         j = json.loads("".join(lines))
     except:
         E("can't parse json: {}".format(path))
+
+    global_options = j["global options"] if j.has_key("global options") else []
+    bs      = global_options["bs"] if global_options.has_key("bs") else ""
+    njobs   = global_options["numjobs"] if global_options.has_key("numjobs") else ""
+    iodepth = global_options["iodepth"] if global_options.has_key("iodepth") else ""
     
     # client_stats for remote fio server, jobs for local
     stats = []
@@ -110,8 +115,9 @@ def parse(path):
         Write_BW   = data[entry_name]["write"][2] / 1024 / 1024  # MiB
         error      = data[entry_name]["error"]
         max_runtime = data[entry_name]["max_runtime"] / 1000     # seconds
-        print ("%s[%d]: Read_IOPS: %d@%.2fus Read_BW: %dMiB/s Write_IOPS: %d@%.2fus Write_BW: %dMiB/s [%s]" % \
-                (entry_name, max_runtime, Read_IOPS, Read_LAT, Read_BW, Write_IOPS, Write_LAT, Write_BW, "OK" if error == 0 else "ERR:%d"%(error)))
+        print ("%-10s %-10s: Read_IOPS: %d@%.2fus Read_BW: %dMiB/s Write_IOPS: %d@%.2fus Write_BW: %dMiB/s [%s]" % \
+                (entry_name, "[time={runtime}]".format(runtime=max_runtime), Read_IOPS, Read_LAT, Read_BW, \
+                Write_IOPS, Write_LAT, Write_BW, "OK" if error == 0 else "ERR:%d"%(error)))
         
         TOTAL_READ_IOPS  += Read_IOPS
         TOTAL_READ_IOS   += data[entry_name]["read"][3]
@@ -127,8 +133,8 @@ def parse(path):
     AVG_LAT       = ( TOTAL_READ_LAT + TOTAL_WRITE_LAT ) / ( TOTAL_READ_IOS + TOTAL_WRITE_IOS ) / 1000 # ms
     AVG_READ_LAT  = TOTAL_READ_LAT / (TOTAL_READ_IOS or 1) / 1000
     AVG_WRITE_LAT = TOTAL_WRITE_LAT / (TOTAL_WRITE_IOS or 1) / 1000
-    print ("Total: IOPS: %d@%.2fus BW: %sMiB/s READ_IOPS: %d@%.2fus WRITE_IOPS: %d@%.2fus READ_BW: %dMiB/s WRITE_BW: %dMiB/s" % \
-            (TOTAL_IOPS, AVG_LAT, TOTAL_BW, TOTAL_READ_IOPS, AVG_READ_LAT, TOTAL_WRITE_IOPS, AVG_WRITE_LAT, TOTAL_READ_BW, TOTAL_WRITE_BW))    
+    print ("%-10s %-10s: IOPS: %d@%.2fus BW: %sMiB/s READ_IOPS: %d@%.2fus WRITE_IOPS: %d@%.2fus READ_BW: %dMiB/s WRITE_BW: %dMiB/s" % \
+            ("Total", "[bs={blksz},njobs={njobs},iodepth={iodepth}]".format(blksz=bs, njobs=njobs, iodepth=iodepth), TOTAL_IOPS, AVG_LAT, TOTAL_BW, TOTAL_READ_IOPS, AVG_READ_LAT, TOTAL_WRITE_IOPS, AVG_WRITE_LAT, TOTAL_READ_BW, TOTAL_WRITE_BW))    
     print ("=" * 80)
     
     return data
