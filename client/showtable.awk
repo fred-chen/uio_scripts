@@ -10,20 +10,20 @@
 
 BEGIN {
     RS="=\n\n"
-    printf "%-5s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-15s %-10s %-15s %-15s %-15s\n", \
-           "stat", "qdepth", "njobs", "bs(Bytes)","iops","lat(us)","bw(MiB/s)","read_iops","read_lat(us)","write_iops","write_lat(us)","read_bw(MiB/s)","write_bw(MiB/s)"
-    for(c=0;c<140;c++) printf "="; printf "\n"
+    printf "%-6s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-15s %-10s %-15s %-15s %-15s\n", \
+           "status", "qdepth", "njobs", "bs(Bytes)","iops","lat(us)","bw(MiB/s)","read_iops","read_lat(us)","write_iops","write_lat(us)","read_bw(MiB/s)","write_bw(MiB/s)"
+    for(c=0;c<150;c++) printf "="; printf "\n"
 };
 
 
 {
     match($0, "qd([0-9]+).njobs([0-9]+)(.bs([0-9]+[a-zA-Z]*))*.([0-9]+)s.json\\[([^[:space:]]+)\\]", arr)
-    qdepth     = arr[1]
-    njobs      = arr[2]
-    if(length(arr[4]) == 0)
-        bs = 0
-    else
-        bs = arr[4]
+    # qdepth     = arr[1]
+    # njobs      = arr[2]
+    # if(length(arr[4]) == 0)
+    #     bs = 0
+    # else
+    #     bs = arr[4]
 
     stat = arr[6]
 
@@ -33,10 +33,16 @@ BEGIN {
     # in case the numbers extracted from jobfile name are wrong
     if(length(arr[1]) != 0)
         bs = arr[1]
+    else
+        bs = "err"
     if(length(arr[2]) != 0)
         njobs = arr[2]
+    else
+        njobs = "err"
     if(length(arr[3]) != 0)
         qdepth = arr[3]
+    else
+        qdepth = "err"
     # matched performance values
     iops           = arr[4]
     iops_lat       = arr[5]
@@ -48,6 +54,6 @@ BEGIN {
     read_bw        = arr[11]
     write_bw       = arr[12]
     if(length(iops) != 0)
-        printf "%-5s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-15s %-10s %-15s %-15s %-15s\n", \
+        printf "%-6s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-15s %-10s %-15s %-15s %-15s\n", \
               stat, qdepth, njobs, bs, iops, iops_lat, band_width, read_iops, read_iops_lat, write_iops, write_iops_lat, read_bw, write_bw
 }
