@@ -25,19 +25,20 @@ def parse(path):
     for i in range(len(lines)):
         if lines[i].strip() == "{":
             break
-    lines = lines[i:]
 
     j = None
     try:
+        lines = lines[i:]
         j = json.loads("".join(lines))
     except:
-        E("can't parse json: {}".format(path))
+        sys.stderr.write("Error can't parse json: {}\n".format(path))
+        return None
 
     global_options = j["global options"] if j.has_key("global options") else []
     bs      = global_options["bs"] if global_options.has_key("bs") else ""
     njobs   = global_options["numjobs"] if global_options.has_key("numjobs") else ""
     iodepth = global_options["iodepth"] if global_options.has_key("iodepth") else ""
-    
+
     # client_stats for remote fio server, jobs for local
     stats = []
     stats += j["client_stats"] if j.has_key("client_stats") else []
