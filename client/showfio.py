@@ -11,9 +11,10 @@ import os, sys, json
 sys.path.append('%s/../cctf/cctf' % (os.path.dirname(os.path.realpath(__file__))))
 import me
 
-def E(msg):
+def E(msg, term=True):
     sys.stderr.write("Error: {0}\n".format(msg))
-    exit(1)
+    if(term):
+      exit(1)
 
 def parse(path):
     if not os.path.exists(path):
@@ -31,7 +32,7 @@ def parse(path):
         lines = lines[i:]
         j = json.loads("".join(lines))
     except:
-        sys.stderr.write("Error can't parse json: {}\n".format(path))
+        E("Error can't parse json: {}\n".format(path), False)
         return None
 
     global_options = j["global options"] if j.has_key("global options") else []
@@ -129,6 +130,9 @@ def parse(path):
         TOTAL_WRITE_LAT  += data[entry_name]["write"][5]
         TOTAL_WRITE_BW   += Write_BW
     
+    if(TOTAL_READ_IOS==0 and TOTAL_WRITE_IOS==0):
+      E("Deviding Zero... json: {}".format(path), False);
+      return data
     TOTAL_IOPS    = TOTAL_READ_IOPS + TOTAL_WRITE_IOPS
     TOTAL_BW      = TOTAL_READ_BW + TOTAL_WRITE_BW
     AVG_LAT       = ( TOTAL_READ_LAT + TOTAL_WRITE_LAT ) / ( TOTAL_READ_IOS + TOTAL_WRITE_IOS ) / 1000 # ms
