@@ -39,6 +39,7 @@ def parse(path):
     bs      = global_options["bs"] if global_options.has_key("bs") else ""
     njobs   = global_options["numjobs"] if global_options.has_key("numjobs") else ""
     iodepth = global_options["iodepth"] if global_options.has_key("iodepth") else ""
+    rw      = global_options["rw"] if global_options.has_key("rw") else ""
 
     # client_stats for remote fio server, jobs for local
     stats = []
@@ -139,7 +140,7 @@ def parse(path):
     AVG_READ_LAT  = TOTAL_READ_LAT / (TOTAL_READ_IOS or 1) / 1000
     AVG_WRITE_LAT = TOTAL_WRITE_LAT / (TOTAL_WRITE_IOS or 1) / 1000
     print ("%-10s %-10s: IOPS: %d@%.2fus BW: %sMiB/s READ_IOPS: %d@%.2fus WRITE_IOPS: %d@%.2fus READ_BW: %dMiB/s WRITE_BW: %dMiB/s" % \
-            ("Total", "[bs={blksz},njobs={njobs},iodepth={iodepth}]".format(blksz=bs, njobs=njobs, iodepth=iodepth), TOTAL_IOPS, AVG_LAT, TOTAL_BW, TOTAL_READ_IOPS, AVG_READ_LAT, TOTAL_WRITE_IOPS, AVG_WRITE_LAT, TOTAL_READ_BW, TOTAL_WRITE_BW))    
+            ("Total", "[bs={blksz},njobs={njobs},iodepth={iodepth},rw={rw}]".format(blksz=bs, njobs=njobs, iodepth=iodepth, rw=rw), TOTAL_IOPS, AVG_LAT, TOTAL_BW, TOTAL_READ_IOPS, AVG_READ_LAT, TOTAL_WRITE_IOPS, AVG_WRITE_LAT, TOTAL_READ_BW, TOTAL_WRITE_BW))    
     print ("=" * 80)
     
     return data

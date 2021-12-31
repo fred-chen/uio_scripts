@@ -10,8 +10,8 @@
 
 BEGIN {
     RS="=\n\n"
-    printf "%-6s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-15s %-10s %-15s %-15s %-15s\n", \
-           "status", "qdepth", "njobs", "bs(Bytes)","iops","lat(us)","bw(MiB/s)","read_iops","read_lat(us)","write_iops","write_lat(us)","read_bw(MiB/s)","write_bw(MiB/s)"
+    printf "%-6s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-15s %-10s %-15s %-15s %-15s\n", \
+           "status", "rw", "qdepth", "njobs", "bs(Bytes)","iops","lat(us)","bw(MiB/s)","read_iops","read_lat(us)","write_iops","write_lat(us)","read_bw(MiB/s)","write_bw(MiB/s)"
     for(c=0;c<150;c++) printf "="; printf "\n"
 };
 
@@ -27,7 +27,7 @@ BEGIN {
 
     stat = arr[6]
 
-    match($0, "Total[[:space:]]+\\[bs=(.+),njobs=(.+),iodepth=(.+)\\][[:space:]]*: IOPS: ([0-9]+)@([0-9.]+)us BW: ([0-9]+)MiB/s READ_IOPS: ([0-9]+)@([0-9.]+)us WRITE_IOPS: ([0-9]+)@([0-9.]+)us READ_BW: ([0-9]+)MiB/s WRITE_BW: ([0-9]+)MiB/s", arr)
+    match($0, "Total[[:space:]]+\\[bs=(.+),njobs=(.+),iodepth=(.+),rw=(.+)\\][[:space:]]*: IOPS: ([0-9]+)@([0-9.]+)us BW: ([0-9]+)MiB/s READ_IOPS: ([0-9]+)@([0-9.]+)us WRITE_IOPS: ([0-9]+)@([0-9.]+)us READ_BW: ([0-9]+)MiB/s WRITE_BW: ([0-9]+)MiB/s", arr)
     
     # get actual bs,njobs,qdepth from json file
     # in case the numbers extracted from jobfile name are wrong
@@ -43,17 +43,21 @@ BEGIN {
         qdepth = arr[3]
     else
         qdepth = "err"
+    if(length(arr[4]) != 0)
+        rw = arr[4]
+    else
+        rw = "err"
     # matched performance values
-    iops           = arr[4]
-    iops_lat       = arr[5]
-    band_width     = arr[6]
-    read_iops      = arr[7]
-    read_iops_lat  = arr[8]
-    write_iops     = arr[9]
-    write_iops_lat = arr[10]
-    read_bw        = arr[11]
-    write_bw       = arr[12]
+    iops           = arr[5]
+    iops_lat       = arr[6]
+    band_width     = arr[7]
+    read_iops      = arr[8]
+    read_iops_lat  = arr[9]
+    write_iops     = arr[10]
+    write_iops_lat = arr[11]
+    read_bw        = arr[12]
+    write_bw       = arr[13]
     if(length(iops) != 0)
-        printf "%-6s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-15s %-10s %-15s %-15s %-15s\n", \
-              stat, qdepth, njobs, bs, iops, iops_lat, band_width, read_iops, read_iops_lat, write_iops, write_iops_lat, read_bw, write_bw
+        printf "%-6s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-15s %-10s %-15s %-15s %-15s\n", \
+              stat, rw, qdepth, njobs, bs, iops, iops_lat, band_width, read_iops, read_iops_lat, write_iops, write_iops_lat, read_bw, write_bw
 }
