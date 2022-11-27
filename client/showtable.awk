@@ -27,7 +27,7 @@ BEGIN {
 
     stat = arr[6]
 
-    match($0, "Total[[:space:]]+\\[bs=(.+),njobs=(.+),iodepth=(.+),rw=(.+)\\][[:space:]]*: IOPS: ([0-9]+)@([0-9.]+)us BW: ([0-9]+)MiB/s READ_IOPS: ([0-9]+)@([0-9.]+)us WRITE_IOPS: ([0-9]+)@([0-9.]+)us READ_BW: ([0-9]+)MiB/s WRITE_BW: ([0-9]+)MiB/s", arr)
+    match($0, "Total[[:space:]]+\\[bs=(.+),njobs=(.+),iodepth=(.+),rw=(.+)\\][[:space:]]*: IOPS: ([0-9]+)@([0-9.]+)us BW: ([0-9.]+)MiB/s READ_IOPS: ([0-9.]+)@([0-9.]+)us WRITE_IOPS: ([0-9.]+)@([0-9.]+)us READ_BW: ([0-9.]+)MiB/s WRITE_BW: ([0-9.]+)MiB/s", arr)
     
     # get actual bs,njobs,qdepth from json file
     # in case the numbers extracted from jobfile name are wrong

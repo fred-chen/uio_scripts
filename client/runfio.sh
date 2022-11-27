@@ -15,6 +15,7 @@ runtime=600              # the time that fio will run
 jobtype=                 # job type, a prefix of fio job files
 duprate=                 # dedup ratio. (dedupe_percentage=xxx in fio profile)
 comprate=                # compression ratio. (buffer_compress_percentage=xxx in fio profile)
+steadytime=              # steady state time last for n seconds before stop ()
 
 function usage() {
   [[ ! -z $1 ]] && {
@@ -30,6 +31,7 @@ function usage() {
   echo "options:"
   echo "job_type:        job type, a prefix of fio job files"
   echo "  -p | --profiledir: specify the dir that contains fio job files"
+  echo "  -s | --steadytime: specify the run time in steady state in seconds"
   echo "  -j | --jobs:   specify numjobs fio will use in job files. multiple numjobs can be specified: '1,2,3'"
   echo "  -q | --qdepth: specify iodepth fio will use in job files. multiple q depth can be specified: '1,2,3'"
   echo "  -t | --time:   specify runtime in fio profile"
@@ -41,7 +43,7 @@ function usage() {
 }
 
 handleopts() {
-  OPTS=`getopt -o hc:q:t:j:d:p:b: -l help,clients:,jobs:,qdepth:,bs:,time:,devices:,duprate:,comprate:,profiledir: -- "$@"`
+  OPTS=`getopt -o hc:q:t:j:d:p:b:s: -l help,clients:,jobs:,qdepth:,bs:,time:,devices:,duprate:,comprate:,profiledir:,steadytime: -- "$@"`
   [[ $? -eq 0 ]] || usage
   eval set -- "$OPTS"
   while true ; do
@@ -53,6 +55,7 @@ handleopts() {
           -t | --time) runtime=$2; shift 2;;
           -d | --devices) devlist=$2; shift 2;;
           -p | --profiledir) profiledir=$2; shift 2;;
+          -s | --steadytime) steadytime=$2; shift 2;;
           -h | --help) shift 1; usage;;
           --duprate) duprate=$2; shift 2;;
           --comprate) comprate=$2; shift 2;;
@@ -102,6 +105,8 @@ main() {
 
             [[ ! -z "$duprate" ]] && sed -i "s|dedupe_percentage=.\+|dedupe_percentage=${duprate}|g" $jobfn
             [[ ! -z "$comprate" ]] && sed -i "s|buffer_compress_percentage=.\+|buffer_compress_percentage=${comprate}|g" $jobfn
+            [[ ! -z "$steadytime" ]] && sed -i "s|ss_dur=.\+|ss_dur=${steadytime}|g" $jobfn
+            
           }
 
           client_args="$client_args --client $client $jobfn"

@@ -35,16 +35,16 @@ def parse(path):
         E("Error can't parse json: {}\n".format(path), False)
         return None
 
-    global_options = j["global options"] if j.has_key("global options") else []
-    bs      = global_options["bs"] if global_options.has_key("bs") else ""
-    njobs   = global_options["numjobs"] if global_options.has_key("numjobs") else ""
-    iodepth = global_options["iodepth"] if global_options.has_key("iodepth") else ""
-    rw      = global_options["rw"] if global_options.has_key("rw") else ""
+    global_options = j["global options"] if "global options" in j else []
+    bs      = global_options["bs"] if "bs" in global_options else ""
+    njobs   = global_options["numjobs"] if "numjobs" in global_options else ""
+    iodepth = global_options["iodepth"] if "iodepth" in global_options else ""
+    rw      = global_options["rw"] if "rw" in global_options else ""
 
     # client_stats for remote fio server, jobs for local
     stats = []
-    stats += j["client_stats"] if j.has_key("client_stats") else []
-    stats += j["jobs"] if j.has_key("jobs") else []
+    stats += j["client_stats"] if "client_stats" in j else []
+    stats += j["jobs"] if "jobs" in j else []
     
     data={}  # { entry_name : {
              #                  read: [iops, lat_ns, bw_bytes, ios, runtime, total_lat],
@@ -56,23 +56,23 @@ def parse(path):
              # }
     for stat in stats:
         if stat["jobname"] == "All clients": continue
-        entry_name      = stat["hostname"] if stat.has_key("hostname") else stat["jobname"]
+        entry_name      = stat["hostname"] if "hostname" in stat else stat["jobname"]
         read_iops       = stat["read"]["iops"]
         read_lat        = stat["read"]["lat_ns"]["mean"]
-        read_bw         = stat["read"]["bw_bytes"] if stat["read"].has_key("bw_bytes") else int(stat["read"]["bw"]) * 1024
+        read_bw         = stat["read"]["bw_bytes"] if "bw_bytes" in stat["read"] else int(stat["read"]["bw"]) * 1024
         read_ios        = stat["read"]["total_ios"]
         read_runtime    = stat["read"]["runtime"]  # ms
         read_total_lat  = read_ios * read_lat
         write_iops      = stat["write"]["iops"]
         write_lat       = stat["write"]["lat_ns"]["mean"]
-        write_bw        = stat["write"]["bw_bytes"] if stat["write"].has_key("bw_bytes") else int(stat["write"]["bw"]) * 1024
+        write_bw        = stat["write"]["bw_bytes"] if "bw_bytes" in stat["write"] else int(stat["write"]["bw"]) * 1024
         write_ios       = stat["write"]["total_ios"]
         write_runtime   = stat["write"]["runtime"]
         write_total_lat = write_ios * write_lat
         num_errors      = stat["error"]
         runtime         = read_runtime if read_runtime >= write_runtime else write_runtime
 
-        if data.has_key(entry_name):
+        if entry_name in data:
             data[entry_name]["read"][0]  += read_iops
             data[entry_name]["read"][1]  += read_lat
             data[entry_name]["read"][2]  += read_bw
@@ -139,7 +139,7 @@ def parse(path):
     AVG_LAT       = ( TOTAL_READ_LAT + TOTAL_WRITE_LAT ) / ( TOTAL_READ_IOS + TOTAL_WRITE_IOS ) / 1000 # ms
     AVG_READ_LAT  = TOTAL_READ_LAT / (TOTAL_READ_IOS or 1) / 1000
     AVG_WRITE_LAT = TOTAL_WRITE_LAT / (TOTAL_WRITE_IOS or 1) / 1000
-    print ("%-10s %-10s: IOPS: %d@%.2fus BW: %sMiB/s READ_IOPS: %d@%.2fus WRITE_IOPS: %d@%.2fus READ_BW: %dMiB/s WRITE_BW: %dMiB/s" % \
+    print ("%-10s %-10s: IOPS: %d@%.2fus BW: %dMiB/s READ_IOPS: %d@%.2fus WRITE_IOPS: %d@%.2fus READ_BW: %dMiB/s WRITE_BW: %dMiB/s" % \
             ("Total", "[bs={blksz},njobs={njobs},iodepth={iodepth},rw={rw}]".format(blksz=bs, njobs=njobs, iodepth=iodepth, rw=rw), TOTAL_IOPS, AVG_LAT, TOTAL_BW, TOTAL_READ_IOPS, AVG_READ_LAT, TOTAL_WRITE_IOPS, AVG_WRITE_LAT, TOTAL_READ_BW, TOTAL_WRITE_BW))    
     print ("=" * 80)
     
