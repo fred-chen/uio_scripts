@@ -16,6 +16,7 @@ jobtype=                 # job type, a prefix of fio job files
 duprate=                 # dedup ratio. (dedupe_percentage=xxx in fio profile)
 comprate=                # compression ratio. (buffer_compress_percentage=xxx in fio profile)
 steadytime=              # steady state time last for n seconds before stop ()
+rws="read"               # rw types: read/write/randread/randwrite
 
 function usage() {
   [[ ! -z $1 ]] && {
@@ -28,14 +29,15 @@ function usage() {
   printf "%${len}s            [-t|--time secs] [-c|--clients client_str]\n" " "
   printf "%${len}s            [--duprate pct] [--comprate pct]\n" " "
   echo
-  echo "options:"
   echo "job_type:        job type, a prefix of fio job files"
+  echo "options:"
   echo "  -p | --profiledir: specify the dir that contains fio job files"
   echo "  -s | --steadytime: specify the run time in steady state in seconds"
   echo "  -j | --jobs:   specify numjobs fio will use in job files. multiple numjobs can be specified: '1,2,3'"
   echo "  -q | --qdepth: specify iodepth fio will use in job files. multiple q depth can be specified: '1,2,3'"
   echo "  -t | --time:   specify runtime in fio profile"
   echo "  -b | --bs:     specify io size in fio profile"
+  echo "  -w | --rw:     specify work type: read/write/randread/randwrite"
   echo "  --duprate:     specify dedupe_percentage in fio profile"
   echo "  --comprate:    specify buffer_compress_percentage in fio profile"
 
@@ -43,13 +45,14 @@ function usage() {
 }
 
 handleopts() {
-  OPTS=`getopt -o hc:q:t:j:d:p:b:s: -l help,clients:,jobs:,qdepth:,bs:,time:,devices:,duprate:,comprate:,profiledir:,steadytime: -- "$@"`
+  OPTS=`getopt -o hc:q:t:j:d:p:b:s:w: -l help,clients:,jobs:,qdepth:,bs:,time:,devices:,duprate:,comprate:,profiledir:,steadytime:,rw: -- "$@"`
   [[ $? -eq 0 ]] || usage
   eval set -- "$OPTS"
   while true ; do
       case "$1" in
           -c | --clients) clients=$2; shift 2;;
           -j | --jobs) njobs=$2; shift 2;;
+          -w | --rw) rws=$2; shift 2;;
           -q | --qdepth) qds=$2; shift 2;;
           -b | --bs) szs=$2; shift 2;;
           -t | --time) runtime=$2; shift 2;;
@@ -69,7 +72,8 @@ handleopts() {
   clients=`echo $clients|sed 's/,/ /g'`
   outputdir="${profiledir}/${outputdir}"
   logdir="${profiledir}/${logdir}"
-  echo "njobs=$njobs" "qds=$qds" "szs=$szs" "clients=$clients" "time=$runtime" "jobtype=$jobtype"
+  rws=`echo $rws|sed 's/,/ /g'`
+  echo "njobs=$njobs" "rws=$rws" "qds=$qds" "szs=$szs" "clients=$clients" "time=$runtime" "jobtype=$jobtype"
 }
 
 main() {
@@ -80,41 +84,43 @@ main() {
   do
     for qd in $qds
     do
-      for sz in $szs
+      for rw in $rws
       do
-        client_args=
-        jobstr="$jobtype.qd$qd.njobs$nj.bs$sz"
-        [[ ! -z "$duprate" ]] && jobstr="${jobstr}.${duprate}dup"
-        [[ ! -z "$comprate" ]] && jobstr="${jobstr}.${comprate}comp"
-        [[ ! -z "$runtime" ]] && jobstr="${jobstr}.${runtime}s"
-
-        joblogdir="$logdir/${jobstr}" && mkdir -p $joblogdir
-        jsonfn=$outputdir/$jobstr.json
-        logfn=$joblogdir/$jobstr
-        for client in $clients
+        for sz in $szs
         do
-          jobfn=$profiledir/${jobtype}_$client.fio
-          [[ ! -e $jobfn ]] && echo "$jobfn doesn't exist." && exit 1 || {
-            [[ ! -z "$qd" ]] && sed -i "s/iodepth=[0-9]\+/iodepth=${qd}/g" $jobfn
-            [[ ! -z "$nj" ]] && sed -i "s/numjobs=[0-9]\+/numjobs=${nj}/g" $jobfn
-            [[ ! -z "$sz" ]] && sed -i "s/^bs=[0-9]\+[a-zA-Z]*/bs=${sz}/g" $jobfn
-            [[ ! -z "$runtime" ]] && sed -i "s/runtime=[0-9]\+/runtime=${runtime}/g" $jobfn
-            [[ ! -z "$logfn" ]] && sed -i "s|write_bw_log=.\+|write_bw_log=${logfn}|g" $jobfn &&
-                                  sed -i "s|write_lat_log=.\+|write_lat_log=${logfn}|g" $jobfn &&
-                                  sed -i "s|write_iops_log=.\+|write_iops_log=${logfn}|g" $jobfn
-
-            [[ ! -z "$duprate" ]] && sed -i "s|dedupe_percentage=.\+|dedupe_percentage=${duprate}|g" $jobfn
-            [[ ! -z "$comprate" ]] && sed -i "s|buffer_compress_percentage=.\+|buffer_compress_percentage=${comprate}|g" $jobfn
-            [[ ! -z "$steadytime" ]] && sed -i "s|ss_dur=.\+|ss_dur=${steadytime}|g" $jobfn
-            
-          }
-
-          client_args="$client_args --client $client $jobfn"
-        done
-        args="--output=$jsonfn --output-format=json"
-        echo "starting ${jobstr} ... "
-        fio $args $client_args
-        echo "done"
+          client_args=
+          jobstr="$jobtype.$rw.qd$qd.njobs$nj.bs$sz"
+          [[ ! -z "$duprate" ]] && jobstr="${jobstr}.${duprate}dup"
+          [[ ! -z "$comprate" ]] && jobstr="${jobstr}.${comprate}comp"
+          [[ ! -z "$runtime" ]] && jobstr="${jobstr}.${runtime}s"
+ 
+          joblogdir="$logdir/${jobstr}" && mkdir -p $joblogdir
+          jsonfn=$outputdir/$jobstr.json
+          logfn=$joblogdir/$jobstr
+          for client in $clients
+          do
+            jobfn=$profiledir/${jobtype}_$client.fio
+            [[ ! -e $jobfn ]] && echo "$jobfn doesn't exist." && exit 1 || {
+              [[ ! -z "$qd" ]] && sed -i "s/iodepth=[0-9]\+/iodepth=${qd}/g" $jobfn
+              [[ ! -z "$nj" ]] && sed -i "s/numjobs=[0-9]\+/numjobs=${nj}/g" $jobfn
+              [[ ! -z "$sz" ]] && sed -i "s/^bs=[0-9]\+[a-zA-Z]*/bs=${sz}/g" $jobfn
+              [[ ! -z "$rw" ]] && sed -i "s/^rw=[a-zA-Z]*/rw=${rw}/g" $jobfn
+              [[ ! -z "$runtime" ]] && sed -i "s/runtime=[0-9]\+/runtime=${runtime}/g" $jobfn
+              [[ ! -z "$logfn" ]] && sed -i "s|write_bw_log=.\+|write_bw_log=${logfn}|g" $jobfn &&
+                                    sed -i "s|write_lat_log=.\+|write_lat_log=${logfn}|g" $jobfn &&
+                                    sed -i "s|write_iops_log=.\+|write_iops_log=${logfn}|g" $jobfn
+  
+              [[ ! -z "$duprate" ]] && sed -i "s|dedupe_percentage=.\+|dedupe_percentage=${duprate}|g" $jobfn
+              [[ ! -z "$comprate" ]] && sed -i "s|buffer_compress_percentage=.\+|buffer_compress_percentage=${comprate}|g" $jobfn
+              [[ ! -z "$steadytime" ]] && sed -i "s|ss_dur=.\+|ss_dur=${steadytime}|g" $jobfn
+            }
+            client_args="$client_args --client $client $jobfn"
+         done
+         args="--output=$jsonfn --output-format=json"
+         echo "starting ${jobstr} ... "
+         fio $args $client_args
+         echo "done"
+       done
       done
     done
   done
