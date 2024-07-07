@@ -117,9 +117,9 @@ main() {
             client_args="$client_args --client $client $jobfn"
          done
          args="--output=$jsonfn --output-format=json"
-         echo "starting ${jobstr} ... "
+         echo "$(date) starting ${jobstr} ... "
          fio $args $client_args
-         echo "done"
+         echo "$(date) done"
        done
       done
     done
