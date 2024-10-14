@@ -7,8 +7,6 @@
 #   - FlameGraph installed and located in ../FlameGraph
 # Maintainer: Fred Chen
 
-source scl_source enable devtoolset-7 llvm-toolset-7
-
 PREFIX="this"
 TIME=60
 TYPE="oncpu offcpu wakeup offwakeup"
@@ -36,7 +34,7 @@ function usage() {
 }
 
 function handleopts {
-    OPTS=`getopt -o w:t:hg:x:k -l help,exclude: -- "$@"`
+    OPTS=`getopt -o p:w:t:hg:x:k -l help,exclude: -- "$@"`
     [[ $? -eq 0 ]] || usage
 
     eval set -- "$OPTS"
@@ -48,11 +46,14 @@ function handleopts {
             -k ) KEEPFILES=true; shift 1;;
             -h | --help ) usage; shift;;
             -x | --exclude ) EXCLUDE_STACK="$2"; shift 2;;
+            -p | --pid ) PID="$2"; shift 2;;
             --) shift; break;;
         esac
     done
-    [[ $# -ne 0 ]] && { PROGNAME="$@" && PID=`pgrep -nx "$PROGNAME"`; } || PROGNAME="allcpus"
-    [[ ${PROGNAME} != "allcpus" ]] && [[ -z "$PID" ]] && usage "no running process named: \"$@\""
+    [[ -z "$PID" ]] && [[ $# -ne 0 ]] && { PROGNAME="$@" && PID=`pgrep "$PROGNAME" | head -1`; }
+    [[ -n "$PID" && -z "$PROGNAME" ]] && PROGNAME="pid_$PID"
+    echo "PID: $PID, PROGNAME: $PROGNAME"
+    [[ -z "$PID" ]] && [[ ${PROGNAME} != "allcpus" ]] && usage "no running process found: \"$@\" $PID"
     [[ "$TIME" =~ ^[0-9]+$ ]] || usage "-t must be followed by a number."
     for t in $TYPE
     do
@@ -103,7 +104,7 @@ function main() {
     eval "${FLAME_GRAPH_CMD[${profiling_type}]}" >/dev/null 2>&1
   done
   echo "done" && echo
-  echo "FlameGraphs Generated:"
+  echo "FlameGraphs Generated:&"
   printf '=%.0s' {1..40} && echo
   for t in ${TYPE}
   do
