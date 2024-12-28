@@ -17,6 +17,7 @@ duprate=                 # dedup ratio. (dedupe_percentage=xxx in fio profile)
 comprate=                # compression ratio. (buffer_compress_percentage=xxx in fio profile)
 steadytime=              # steady state time last for n seconds before stop ()
 rws="read"               # rw types: read/write/randread/randwrite
+overwrite=false          # do not overwrite existing test result files if they exist (will skip those tests)
 
 function usage() {
   [[ ! -z $1 ]] && {
@@ -40,12 +41,13 @@ function usage() {
   echo "  -w | --rw:     specify work type: read/write/randread/randwrite"
   echo "  --duprate:     specify dedupe_percentage in fio profile"
   echo "  --comprate:    specify buffer_compress_percentage in fio profile"
+  echo "  --overwrite:   force overwrite existing output json files"
 
   exit 1
 }
 
 handleopts() {
-  OPTS=`getopt -o hc:q:t:j:d:p:b:s:w: -l help,clients:,jobs:,qdepth:,bs:,time:,devices:,duprate:,comprate:,profiledir:,steadytime:,rw: -- "$@"`
+  OPTS=`getopt -o hc:q:t:j:d:p:b:s:w: -l help,clients:,jobs:,qdepth:,bs:,time:,devices:,duprate:,comprate:,profiledir:,overwrite,steadytime:,rw: -- "$@"`
   [[ $? -eq 0 ]] || usage
   eval set -- "$OPTS"
   while true ; do
@@ -62,6 +64,7 @@ handleopts() {
           -h | --help) shift 1; usage;;
           --duprate) duprate=$2; shift 2;;
           --comprate) comprate=$2; shift 2;;
+          --overwrite) shift 1; overwrite=true;;
           --) shift; break;;
       esac
   done
@@ -96,6 +99,7 @@ main() {
  
           joblogdir="$logdir/${jobstr}" && mkdir -p $joblogdir
           jsonfn=$outputdir/$jobstr.json
+          [[ $overwrite == false ]] && [[ -f $jsonfn ]] && echo "skipping this task, $jsonfn exists." && continue
           logfn=$joblogdir/$jobstr
           for client in $clients
           do
