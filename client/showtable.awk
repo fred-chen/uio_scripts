@@ -10,8 +10,8 @@
 
 BEGIN {
     RS="=\n\n"
-    printf "%-6s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-15s %-10s %-15s %-15s %-15s\n", \
-           "status", "rw", "qdepth", "njobs", "bs(Bytes)","iops","lat(us)","bw(MiB/s)","read_iops","read_lat(us)","write_iops","write_lat(us)","read_bw(MiB/s)","write_bw(MiB/s)"
+    printf "%-6s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-15s %-10s %-15s %-15s %-15s %-9s\n", \
+           "status", "rw", "qdepth", "njobs", "bs(Bytes)","iops","lat(us)","bw(MiB/s)","read_iops","read_lat(us)","write_iops","write_lat(us)","read_bw(MiB/s)","write_bw(MiB/s)", "stddev%"
     for(c=0;c<150;c++) printf "="; printf "\n"
 };
 
@@ -27,7 +27,7 @@ BEGIN {
 
     stat = arr[6]
 
-    match($0, "Total[[:space:]]+\\[bs=(.+),njobs=(.+),iodepth=(.+),rw=(.+)\\][[:space:]]*: IOPS: ([0-9]+)@([0-9.]+)us BW: ([0-9.]+)MiB/s READ_IOPS: ([0-9.]+)@([0-9.]+)us WRITE_IOPS: ([0-9.]+)@([0-9.]+)us READ_BW: ([0-9.]+)MiB/s WRITE_BW: ([0-9.]+)MiB/s", arr)
+    match($0, "Total[[:space:]]+\\[bs=(.+),njobs=(.+),iodepth=(.+),rw=(.+)\\][[:space:]]*: IOPS: ([0-9]+)@([0-9.]+)us BW: ([0-9.]+)MiB/s READ_IOPS: ([0-9.]+)@([0-9.]+)us WRITE_IOPS: ([0-9.]+)@([0-9.]+)us READ_BW: ([0-9.]+)MiB/s WRITE_BW: ([0-9.]+)MiB/s DEVIATION: ([0-9.]+)%", arr)
     
     # get actual bs,njobs,qdepth from json file
     # in case the numbers extracted from jobfile name are wrong
@@ -57,7 +57,8 @@ BEGIN {
     write_iops_lat = arr[11]
     read_bw        = arr[12]
     write_bw       = arr[13]
+    deviation      = arr[14]
     if(length(iops) != 0)
-        printf "%-6s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-15s %-10s %-15s %-15s %-15s\n", \
-              stat, rw, qdepth, njobs, bs, iops, iops_lat, band_width, read_iops, read_iops_lat, write_iops, write_iops_lat, read_bw, write_bw
+        printf "%-6s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-15s %-10s %-15s %-15s %-15s %-4s%%\n", \
+              stat, rw, qdepth, njobs, bs, iops, iops_lat, band_width, read_iops, read_iops_lat, write_iops, write_iops_lat, read_bw, write_bw, deviation
 }
