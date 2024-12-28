@@ -59,6 +59,6 @@ BEGIN {
     write_bw       = arr[13]
     deviation      = arr[14]
     if(length(iops) != 0)
-        printf "%-6s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-15s %-10s %-15s %-15s %-15s %-4s%%\n", \
+        printf "%-6s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-10s %-15s %-10s %-15s %-15s %-15s %-5s%%\n", \
               stat, rw, qdepth, njobs, bs, iops, iops_lat, band_width, read_iops, read_iops_lat, write_iops, write_iops_lat, read_bw, write_bw, deviation
 }
