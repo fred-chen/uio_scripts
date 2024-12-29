@@ -18,6 +18,7 @@ comprate=                # compression ratio. (buffer_compress_percentage=xxx in
 steadytime=              # steady state time last for n seconds before stop ()
 rws="read"               # rw types: read/write/randread/randwrite
 overwrite=false          # do not overwrite existing test result files if they exist (will skip those tests)
+comm_before_write=""     # insert a customized command between write jobs (for example, discard ssd before next task.)
 
 function usage() {
   [[ ! -z $1 ]] && {
@@ -42,12 +43,13 @@ function usage() {
   echo "  --duprate:     specify dedupe_percentage in fio profile"
   echo "  --comprate:    specify buffer_compress_percentage in fio profile"
   echo "  --overwrite:   force overwrite existing output json files"
+  echo "  --comm_before_write:   specify a customized command before write (e.g. discard ssd before next write task.)"
 
   exit 1
 }
 
 handleopts() {
-  OPTS=`getopt -o hc:q:t:j:d:p:b:s:w: -l help,clients:,jobs:,qdepth:,bs:,time:,devices:,duprate:,comprate:,profiledir:,overwrite,steadytime:,rw: -- "$@"`
+  OPTS=`getopt -o hc:q:t:j:d:p:b:s:w: -l help,clients:,jobs:,qdepth:,bs:,time:,devices:,duprate:,comprate:,profiledir:,overwrite,steadytime:,rw:,comm_before_write: -- "$@"`
   [[ $? -eq 0 ]] || usage
   eval set -- "$OPTS"
   while true ; do
@@ -64,6 +66,7 @@ handleopts() {
           -h | --help) shift 1; usage;;
           --duprate) duprate=$2; shift 2;;
           --comprate) comprate=$2; shift 2;;
+          --comm_before_write) comm_before_write=$2; shift 2;;
           --overwrite) shift 1; overwrite=true;;
           --) shift; break;;
       esac
@@ -100,6 +103,7 @@ main() {
           joblogdir="$logdir/${jobstr}" && mkdir -p $joblogdir
           jsonfn=$outputdir/$jobstr.json
           [[ $overwrite == false ]] && [[ -f $jsonfn ]] && echo "skipping this task, $jsonfn exists." && continue
+          [[ $comm_before_write ]] && [[ $rw == "write" || $rw == "randwrite" ]] && echo "running '$comm_before_write'" && eval $comm_before_write
           logfn=$joblogdir/$jobstr
           for client in $clients
           do
