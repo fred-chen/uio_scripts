@@ -19,6 +19,7 @@ steadytime=              # steady state time last for n seconds before stop ()
 rws="read"               # rw types: read/write/randread/randwrite
 overwrite=false          # do not overwrite existing test result files if they exist (will skip those tests)
 comm_before_write=""     # insert a customized command between write jobs (for example, discard ssd before next task.)
+comm_before_read=""      # insert a customized command between read jobs (for example, fill in some data.)
 
 function usage() {
   [[ ! -z $1 ]] && {
@@ -39,11 +40,12 @@ function usage() {
   echo "  -q | --qdepth: specify iodepth fio will use in job files. multiple q depth can be specified: '1,2,3'"
   echo "  -t | --time:   specify runtime in fio profile"
   echo "  -b | --bs:     specify io size in fio profile"
-  echo "  -w | --rw:     specify work type: read/write/randread/randwrite"
+  echo "  -w | --rw:     specify work type: read/write/randread/randwrite/rw/randrw"
   echo "  --duprate:     specify dedupe_percentage in fio profile"
   echo "  --comprate:    specify buffer_compress_percentage in fio profile"
   echo "  --overwrite:   force overwrite existing output json files"
   echo "  --comm_before_write:   specify a customized command before write (e.g. discard ssd before next write task.)"
+  echo "  --comm_before_read:    specify a customized command before read (e.g. fill in some data.)"
 
   exit 1
 }
@@ -67,6 +69,7 @@ handleopts() {
           --duprate) duprate=$2; shift 2;;
           --comprate) comprate=$2; shift 2;;
           --comm_before_write) comm_before_write=$2; shift 2;;
+          --comm_before_read) comm_before_read=$2; shift 2;;
           --overwrite) shift 1; overwrite=true;;
           --) shift; break;;
       esac
@@ -103,7 +106,8 @@ main() {
           joblogdir="$logdir/${jobstr}" && mkdir -p $joblogdir
           jsonfn=$outputdir/$jobstr.json
           [[ $overwrite == false ]] && [[ -f $jsonfn ]] && echo "skipping this task, $jsonfn exists." && continue
-          [[ $comm_before_write ]] && [[ $rw == "write" || $rw == "randwrite" ]] && echo "running '$comm_before_write'" && eval $comm_before_write
+          [[ $comm_before_write ]] && [[ $rw == "write" || $rw == "randwrite" || $rw == "rw" || $rw == "randrw" ]] && echo "running '$comm_before_write'" && eval $comm_before_write
+          [[ $comm_before_read ]] && [[ $rw == "read" || $rw == "randread" || $rw == "rw" || $rw == "randrw" ]] && echo "running '$comm_before_read'" && eval $comm_before_read
           logfn=$joblogdir/$jobstr
           for client in $clients
           do
